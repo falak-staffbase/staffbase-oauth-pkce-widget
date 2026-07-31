@@ -15,7 +15,7 @@ import React from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { OauthClient } from "./oauth-client";
-import { capacitorFindings, inspectCapacitor, probePopup } from "./oauth/capacitor";
+import { capacitorFindings, inspectCapacitor, pluginMethods, probePopup, probeSchemes } from "./oauth/capacitor";
 import { defaultConfig, forEnvironment, OauthConfig, usingNativeClient } from "./oauth/config";
 import {
   configurationBlockers,
@@ -375,6 +375,60 @@ describe("Capacitor bridge probe", () => {
 
     // The probe must not imply a verdict it has no basis for.
     expect(capacitorFindings(inspectCapacitor()).join(" ")).toMatch(/external URL scheme/);
+  });
+});
+
+describe("URL scheme probe", () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it("reports a scheme an installed app claims", async () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      Plugins: { AppLauncher: { canOpenUrl: async ({ url }: { url: string }) => ({ value: url.startsWith("staffbase:") }) } },
+    };
+
+    const results = await probeSchemes(["staffbase://", "capacitor://staffbase.com/"]);
+
+    expect(results[0].canOpen).toBe(true);
+    expect(results[0].detail).toMatch(/claims this scheme/);
+    expect(results[1].canOpen).toBe(false);
+  });
+
+  it("reports unknown rather than false when AppLauncher is missing", async () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = { Plugins: {} };
+
+    const results = await probeSchemes(["staffbase://"]);
+
+    // A false would wrongly imply the scheme was checked and rejected.
+    expect(results[0].canOpen).toBeNull();
+    expect(results[0].detail).toMatch(/not reachable/);
+  });
+
+  it("survives a plugin that rejects", async () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      Plugins: {
+        AppLauncher: {
+          canOpenUrl: async () => {
+            throw new Error("not permitted");
+          },
+        },
+      },
+    };
+
+    const results = await probeSchemes(["staffbase://"]);
+
+    expect(results[0].canOpen).toBeNull();
+    expect(results[0].detail).toMatch(/threw/);
+  });
+
+  it("lists a plugin's callable methods", () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      Plugins: { StaffbaseDeepLink: { addListener: () => undefined, getLaunchUrl: () => undefined } },
+    };
+
+    expect(pluginMethods("StaffbaseDeepLink")).toEqual(["addListener", "getLaunchUrl"]);
+    expect(pluginMethods("Nope")).toEqual([]);
   });
 });
 

@@ -117,6 +117,77 @@ export const capacitorFindings = (report: CapacitorReport): string[] => {
   return findings;
 };
 
+/**
+ * Method names exposed on a bridge plugin.
+ *
+ * Useful for seeing what `StaffbaseDeepLink` actually offers — if it exposes a way to read
+ * or register a handler, that changes what is possible; if it exposes nothing callable,
+ * deep-link routing is entirely internal.
+ */
+export const pluginMethods = (name: string): string[] => {
+  const plugin = bridge()?.Plugins?.[name];
+  if (!plugin || typeof plugin !== "object") return [];
+
+  const own = Object.keys(plugin);
+  const proto = Object.getPrototypeOf(plugin) as object | null;
+  const inherited = proto && proto !== Object.prototype ? Object.getOwnPropertyNames(proto) : [];
+
+  return [...new Set([...own, ...inherited])].filter((key) => key !== "constructor").sort();
+};
+
+export interface SchemeProbe {
+  url: string;
+  canOpen: boolean | null;
+  detail: string;
+}
+
+/**
+ * Ask iOS which URL schemes resolve to an installed app.
+ *
+ * `AppLauncher.canOpenUrl` only inspects — it does not navigate — so this is safe to run
+ * in a live app. The caveat is that on iOS it consults the *calling* app's
+ * `LSApplicationQueriesSchemes` allowlist, so an unlisted scheme reports `false` even when
+ * an app could handle it. A `true` is therefore trustworthy; a `false` is not conclusive.
+ */
+export const probeSchemes = async (candidates: string[]): Promise<SchemeProbe[]> => {
+  const launcher = bridge()?.Plugins?.AppLauncher as
+    | { canOpenUrl?: (options: { url: string }) => Promise<{ value: boolean }> }
+    | undefined;
+
+  if (typeof launcher?.canOpenUrl !== "function") {
+    return candidates.map((url) => ({
+      url,
+      canOpen: null,
+      detail: "AppLauncher.canOpenUrl not reachable",
+    }));
+  }
+
+  return Promise.all(
+    candidates.map(async (url) => {
+      try {
+        const result = await launcher.canOpenUrl!({ url });
+        return {
+          url,
+          canOpen: result.value,
+          detail: result.value ? "an installed app claims this scheme" : "no app claims it (or not in the query allowlist)",
+        };
+      } catch (cause) {
+        return { url, canOpen: null, detail: `threw: ${String(cause)}` };
+      }
+    }),
+  );
+};
+
+/** Schemes a Staffbase iOS build might plausibly register, plus the ones already known. */
+export const SCHEME_CANDIDATES = [
+  "capacitor://staffbase.com/",
+  "staffbase://",
+  "com.staffbase.app://",
+  "ccmuhammad://",
+  "sb://",
+  "https://ccmuhammad.staffbase.com/",
+];
+
 export interface PopupProbe {
   opened: boolean;
   openerIntact: boolean;

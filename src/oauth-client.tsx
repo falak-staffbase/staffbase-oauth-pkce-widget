@@ -15,7 +15,16 @@ import React, { CSSProperties, ReactElement, useEffect, useMemo, useState } from
 import { BlockAttributes, WidgetApi } from "widget-sdk";
 
 import { isPopupCallback, respondToOpener } from "./oauth/callback";
-import { capacitorFindings, inspectCapacitor, PopupProbe, probePopup } from "./oauth/capacitor";
+import {
+  capacitorFindings,
+  inspectCapacitor,
+  pluginMethods,
+  PopupProbe,
+  probePopup,
+  probeSchemes,
+  SCHEME_CANDIDATES,
+  SchemeProbe,
+} from "./oauth/capacitor";
 import { forEnvironment, OauthAttributeName, resolveConfig, usingNativeClient } from "./oauth/config";
 import {
   configurationBlockers,
@@ -134,6 +143,11 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
   const [identity, setIdentity] = useState<{ comparison: IdentityComparison; probe: TokenIdentity } | null>(null);
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [popupProbe, setPopupProbe] = useState<PopupProbe | null>(null);
+  const [schemes, setSchemes] = useState<SchemeProbe[] | null>(null);
+
+  const runSchemeProbe = (): void => {
+    void probeSchemes(SCHEME_CANDIDATES).then(setSchemes);
+  };
 
   /**
    * Base for API calls.
@@ -410,6 +424,28 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
             {finding}
           </p>
         ))}
+
+        <p style={{ ...styles.label, marginTop: 12 }}>Deep-link plugin surface</p>
+        <pre style={styles.pre}>
+          {["App", "AppLauncher", "StaffbaseDeepLink", "StaffbaseSystem"]
+            .map((name) => {
+              const methods = pluginMethods(name);
+              return `${name}: ${methods.length > 0 ? methods.join(", ") : "not reachable"}`;
+            })
+            .join("\n\n")}
+        </pre>
+
+        {/* `canOpenUrl` only inspects — it never navigates — so this is safe in a live app. */}
+        <button style={{ ...styles.button, marginTop: 12 }} onClick={runSchemeProbe}>
+          Probe URL schemes
+        </button>
+        {schemes && (
+          <pre style={{ ...styles.pre, marginTop: 8 }}>
+            {schemes
+              .map((s) => `${s.canOpen === null ? "?" : s.canOpen ? "YES" : "no "}  ${s.url}\n     ${s.detail}`)
+              .join("\n")}
+          </pre>
+        )}
 
         {/* Needs a user gesture, and must stay available even when the flow is blocked. */}
         <button style={{ ...styles.button, marginTop: 12 }} onClick={() => setPopupProbe(probePopup())}>
