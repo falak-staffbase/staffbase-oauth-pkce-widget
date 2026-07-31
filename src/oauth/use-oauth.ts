@@ -255,14 +255,17 @@ export const useOauth = (config: OauthConfig, environment: EnvironmentReport): O
         // these conditions defeat redirect mode too. In a native webview the code would
         // come back to the app's HTTPS origin while the verifier sits under
         // `capacitor://`, so redirecting would navigate the app away for nothing.
-        const nativeAttempt = environment.nativeWebview && config.nativeClientId !== "";
+        // Surfaced, not enforced. This is a diagnostic widget: refusing to attempt a flow
+        // is less useful than attempting it and reporting exactly where it breaks. The
+        // findings are logged so a failure can be read against them afterwards.
         const blockers = [
           ...environmentBlockers(environment, { nativeFlowConfigured: config.nativeClientId !== "" }),
-          ...configurationBlockers(config.redirectUri, environment, { experimentalNativeFlow: nativeAttempt }),
+          ...configurationBlockers(config.redirectUri, environment, {
+            experimentalNativeFlow: environment.nativeWebview,
+          }),
         ];
-        if (blockers.length > 0) {
-          fail(blockers[0]);
-          return;
+        for (const blocker of blockers) {
+          append("error", `Known problem, attempting anyway — ${blocker}`);
         }
 
         const returnUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;

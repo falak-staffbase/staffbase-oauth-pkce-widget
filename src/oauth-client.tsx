@@ -203,10 +203,12 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
   const busy = status === "authorizing" || status === "exchanging";
   const blockers = [
     ...environmentBlockers(oauth.environment, { nativeFlowConfigured: config.nativeClientId !== "" }),
-    ...configurationBlockers(config.redirectUri, oauth.environment, { experimentalNativeFlow: native }),
+    ...configurationBlockers(config.redirectUri, oauth.environment, {
+      experimentalNativeFlow: oauth.environment.nativeWebview,
+    }),
   ];
   const warnings = environmentWarnings(oauth.environment, config.authorizeUri, {
-    experimentalNativeFlow: native,
+    experimentalNativeFlow: oauth.environment.nativeWebview,
     redirectUri: config.redirectUri,
   });
 
@@ -220,7 +222,7 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
 
       {blockers.length > 0 && (
         <div role="alert" style={{ ...styles.error, marginTop: 12 }}>
-          <p style={{ ...styles.label, marginTop: 0 }}>This environment cannot complete an OAuth flow</p>
+          <p style={{ ...styles.label, marginTop: 0 }}>Known problems — sign-in will still run, but expect it to fail</p>
           {blockers.map((blocker) => (
             <p key={blocker} style={{ marginBottom: 0 }}>
               {blocker}
@@ -242,16 +244,14 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
       )}
 
       <div style={styles.row}>
-        <button
-          style={styles.button}
-          onClick={oauth.login}
-          disabled={busy || blockers.length > 0}
-          // Surfaced on the button itself: on a phone the blocker banner may be scrolled
-          // out of view, leaving a disabled button with no visible explanation.
-          title={blockers.length > 0 ? blockers[0] : undefined}
-        >
+        {/*
+          Never disabled by findings, only while a flow is in flight. Known problems are
+          labelled rather than enforced — this is a diagnostic widget, and being able to
+          run an attempt that is expected to fail is the point.
+        */}
+        <button style={styles.button} onClick={oauth.login} disabled={busy} title={blockers[0]}>
           {tokens ? "Re-authorize" : "Sign in with Staffbase ID"}
-          {blockers.length > 0 ? " (blocked — see above)" : ""}
+          {blockers.length > 0 ? " (expected to fail — see above)" : ""}
         </button>
         <button style={styles.button} onClick={oauth.refresh} disabled={!tokens?.refreshToken}>
           Refresh token

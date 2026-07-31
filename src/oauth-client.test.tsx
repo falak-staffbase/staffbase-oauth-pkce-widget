@@ -295,11 +295,10 @@ describe("environment blockers", () => {
   });
 });
 
-describe("blockers apply to redirect mode too", () => {
-  it("does not navigate when the environment cannot complete the flow", async () => {
-    // Redirect mode used to skip the blocker check, which in a native webview would
-    // navigate the app away to an IdP whose code could never be redeemed: the verifier
-    // lives under capacitor:// while the code returns to the HTTPS origin.
+describe("known problems are reported, not enforced", () => {
+  it("still runs the flow and logs the finding", async () => {
+    // A diagnostic widget should let you attempt a flow that is expected to fail — being
+    // told "blocked" with a disabled button is less useful than seeing where it breaks.
     render(
       <OauthClient
         {...{ contentLanguage: "en_US", "flow-mode": "redirect", "redirect-uri": "https://elsewhere.example/" }}
@@ -307,14 +306,14 @@ describe("blockers apply to redirect mode too", () => {
     );
 
     const button = screen.getByRole("button", { name: /Sign in with Staffbase ID/ });
-    expect(button).toBeDisabled();
+    expect(button).toBeEnabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/expect it to fail/);
 
     fireEvent.click(button);
-    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(navigate).not.toHaveBeenCalled();
-    // Nothing half-started that a later mount could try to finish.
-    expect(loadTransaction()).toBeNull();
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+    // The finding is recorded alongside the attempt, so a failure can be read against it.
+    expect(screen.getByText(/Known problem, attempting anyway/)).toBeInTheDocument();
   });
 });
 
@@ -476,8 +475,14 @@ describe("native app webview (Capacitor)", () => {
     expect(usingNativeClient(bothConfig, false)).toBe(false);
   });
 
-  it("does not swap when no native client is configured", () => {
-    expect(forEnvironment(webConfig, true)).toEqual(webConfig);
+  it("falls back to the web client with an HTTPS callback when no native client is set", () => {
+    // The untested permutation, reachable with no configuration: the app's HTTPS origin
+    // is taken from api-base-url, since it cannot be derived from window.location here.
+    const effective = forEnvironment({ ...webConfig, apiBaseUrl: "https://app.example" }, true);
+
+    expect(effective.clientId).toBe("web-client");
+    expect(effective.redirectUri).toBe("https://app.example/");
+    expect(effective.flowMode).toBe("redirect");
     expect(usingNativeClient(webConfig, true)).toBe(false);
   });
 

@@ -171,18 +171,28 @@ export const resolveConfig = (attrs: Record<string, unknown>): OauthConfig => {
  * verifier lives.
  */
 export const forEnvironment = (config: OauthConfig, nativeWebview: boolean): OauthConfig => {
-  if (!nativeWebview || config.nativeClientId === "") {
+  if (!nativeWebview) {
     return config;
   }
 
+  // Always redirect in the webview: window.open returns null there, so popup mode has
+  // nothing to poll.
+  const flowMode = "redirect" as const;
+
+  if (config.nativeClientId !== "") {
+    return { ...config, clientId: config.nativeClientId, redirectUri: config.nativeRedirectUri, flowMode };
+  }
+
+  // No dedicated native client: attempt the HTTPS callback with the web client. The app's
+  // HTTPS origin cannot be derived from `window.location` under `capacitor://`, but
+  // `apiBaseUrl` already names it — so reuse it rather than asking for the same value twice.
   return {
     ...config,
-    clientId: config.nativeClientId,
-    redirectUri: config.nativeRedirectUri,
-    flowMode: "redirect",
+    redirectUri: config.apiBaseUrl !== "" ? `${config.apiBaseUrl}/` : config.redirectUri,
+    flowMode,
   };
 };
 
-/** True when the native client is configured *and* we are in a position to use it. */
+/** True when a dedicated native client is configured, rather than reusing the web one. */
 export const usingNativeClient = (config: OauthConfig, nativeWebview: boolean): boolean =>
   nativeWebview && config.nativeClientId !== "";
