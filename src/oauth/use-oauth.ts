@@ -100,6 +100,12 @@ export interface OauthState {
   error: string | null;
   log: LogEntry[];
   callback: CallbackDebug | null;
+  /**
+   * A Staffbase deep link carrying the authorization code back into the app, set when this
+   * context holds a code but not the verifier. Must be *tapped* — iOS does not fire
+   * universal links for redirect targets, which is the whole reason this exists.
+   */
+  handoffUrl: string | null;
   environment: EnvironmentReport;
   /** Set in the redirect flow: where the user was before being sent to the IdP. */
   returnTo: string | null;
@@ -123,6 +129,7 @@ export const useOauth = (config: OauthConfig, environment: EnvironmentReport): O
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [callback, setCallback] = useState<CallbackDebug | null>(null);
+  const [handoff, setHandoff] = useState<{ code: string; state: string } | null>(null);
   const [returnTo, setReturnTo] = useState<string | null>(null);
 
   /** Guards against the pending code being exchanged twice (codes are single-use). */
@@ -153,8 +160,17 @@ export const useOauth = (config: OauthConfig, environment: EnvironmentReport): O
       const transaction = loadTransaction();
 
       if (!transaction) {
-        // A `?code=` on the URL with no transaction of ours is not necessarily an
-        // attack — it can just be a stale link — but we have no verifier, so stop.
+        // A code with no verifier means this is not the context that started the flow.
+        // On iOS that is the expected shape: the IdP's redirect was handed to the system
+        // browser, while the verifier stayed in the app's webview. A Staffbase deep link
+        // can carry the code back there — but only if the *user taps it*, since iOS does
+        // not fire universal links for redirect targets.
+        if (response.code && response.state && config.openlinkUrl !== "") {
+          setHandoff({ code: response.code, state: response.state });
+          append("info", "Authorization code found without a verifier — offering a deep-link handoff into the app.");
+          return;
+        }
+
         fail("Received an authorization code but no matching PKCE transaction was found in this tab.");
         return;
       }
@@ -457,5 +473,22 @@ export const useOauth = (config: OauthConfig, environment: EnvironmentReport): O
     navigate(buildLogoutUrl(config));
   }, [config, reset]);
 
-  return { status, tokens, error, log, callback, environment, returnTo, login, refresh, logout, reset };
+  /**
+   * The code rides on the deep link as a query string. Staffbase's `/openlink/…` form ends
+   * in a `{path}` segment, so appending here keeps whatever path the instance already has.
+   */
+  const handoffUrl = ((): string | null => {
+    if (!handoff || config.openlinkUrl === "") return null;
+
+    try {
+      const url = new URL(config.openlinkUrl);
+      url.searchParams.set("code", handoff.code);
+      url.searchParams.set("state", handoff.state);
+      return url.href;
+    } catch {
+      return null;
+    }
+  })();
+
+  return { status, tokens, error, log, callback, handoffUrl, environment, returnTo, login, refresh, logout, reset };
 };

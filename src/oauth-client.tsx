@@ -289,6 +289,25 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
         </button>
       </div>
 
+      {/*
+        A real <a> the user taps, not a scripted navigation — iOS fires universal links on
+        taps only, which is exactly the gap this bridges.
+      */}
+      {oauth.handoffUrl && (
+        <div style={{ ...styles.warning, marginTop: 12 }}>
+          <p style={{ ...styles.label, marginTop: 0 }}>Authorization code received — finish in the app</p>
+          <p>
+            This browser has the code but not the PKCE verifier, which stayed in the app. Tap the link below to carry
+            the code back. It must be tapped: iOS does not open the app for a link it was redirected to.
+          </p>
+          <p style={{ marginBottom: 0 }}>
+            <a href={oauth.handoffUrl} style={{ fontWeight: 600 }}>
+              Continue in the Staffbase app →
+            </a>
+          </p>
+        </div>
+      )}
+
       {error && (
         <div role="alert" style={styles.error}>
           {error}

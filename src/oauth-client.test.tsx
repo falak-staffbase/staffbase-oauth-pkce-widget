@@ -378,6 +378,58 @@ describe("Capacitor bridge probe", () => {
   });
 });
 
+describe("deep-link handoff for a code with no verifier", () => {
+  const OPENLINK = "https://ccmuhammad.staffbase.com/openlink/content/plug123/inst456/";
+
+  /** The browser's situation after iOS punts the IdP redirect out of the app. */
+  const arriveWithCodeButNoVerifier = () => {
+    sessionStorage.setItem(
+      "sb-oauth-client:pending-code",
+      JSON.stringify({ code: "ory_ac_from_browser", state: "st-1" }),
+    );
+  };
+
+  it("offers a tappable deep link carrying the code", async () => {
+    arriveWithCodeButNoVerifier();
+
+    render(
+      <OauthClient
+        {...{ contentLanguage: "en_US", "redirect-uri": REDIRECT_URI, "openlink-url": OPENLINK }}
+      />,
+    );
+
+    const link = await screen.findByRole("link", { name: /Continue in the Staffbase app/ });
+    const href = new URL(link.getAttribute("href")!);
+
+    expect(href.origin + href.pathname).toBe(OPENLINK.slice(0, -1) + "/");
+    expect(href.searchParams.get("code")).toBe("ory_ac_from_browser");
+    expect(href.searchParams.get("state")).toBe("st-1");
+  });
+
+  it("explains that the link has to be tapped", async () => {
+    arriveWithCodeButNoVerifier();
+
+    render(
+      <OauthClient
+        {...{ contentLanguage: "en_US", "redirect-uri": REDIRECT_URI, "openlink-url": OPENLINK }}
+      />,
+    );
+
+    // The distinction that makes this work at all: a tap fires a universal link, a
+    // redirect does not.
+    expect(await screen.findByText(/must be tapped/)).toBeInTheDocument();
+  });
+
+  it("falls back to the plain error when no deep link is configured", async () => {
+    arriveWithCodeButNoVerifier();
+
+    renderWidget();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/no matching PKCE transaction/);
+    expect(screen.queryByRole("link", { name: /Continue in the Staffbase app/ })).not.toBeInTheDocument();
+  });
+});
+
 describe("URL scheme probe", () => {
   afterEach(() => {
     delete (window as unknown as { Capacitor?: unknown }).Capacitor;

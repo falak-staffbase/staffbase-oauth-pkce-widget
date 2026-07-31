@@ -86,6 +86,11 @@ export const configurationSchema: JSONSchema7 = {
       title: "API base URL (native app only)",
       default: defaultConfig.apiBaseUrl,
     },
+    "openlink-url": {
+      type: "string",
+      title: "Staffbase deep link to this widget (optional)",
+      default: defaultConfig.openlinkUrl,
+    },
   },
 };
 
@@ -122,6 +127,10 @@ export const uiSchema: UiSchema = {
   "native-redirect-uri": {
     "ui:help":
       "Must match the native client's registered redirect URI exactly, and must be the webview's own origin — check 'origin' in Diagnostics on the device.",
+  },
+  "openlink-url": {
+    "ui:help":
+      "https://<app>/openlink/content/<pluginID>/<pluginInstanceID>/ — the page this widget sits on. When the code lands in the system browser instead of the app (which is what iOS does with a redirected universal link), the widget offers this as a link to tap so the code reaches the app, where the PKCE verifier is.",
   },
   "api-base-url": {
     "ui:help":

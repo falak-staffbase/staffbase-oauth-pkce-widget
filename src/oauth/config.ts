@@ -60,6 +60,19 @@ export interface OauthConfig {
    * Ignored on the web, where the current origin is by definition the right one.
    */
   apiBaseUrl: string;
+  /**
+   * Staffbase deep-link URL for this widget's own plugin instance, of the form
+   * `https://<app>/openlink/content/<pluginID>/<pluginInstanceID>/`.
+   *
+   * Used to bridge the one gap iOS creates: a universal link fires on a user *tap* but not
+   * as the target of an HTTP redirect, so the IdP's 302 always lands in the system browser.
+   * When the widget finds an authorization code but no verifier — i.e. it is running in the
+   * browser, while the flow was started in the app — it offers this as a link to tap, and
+   * the code travels back into the app where the verifier still lives.
+   *
+   * Empty disables the handoff.
+   */
+  openlinkUrl: string;
 }
 
 /**
@@ -110,6 +123,7 @@ export const defaultConfig: OauthConfig = {
    * `staffbase.com`, not the app. Override via `api-base-url` for a different app.
    */
   apiBaseUrl: "https://ccmuhammad.staffbase.com",
+  openlinkUrl: "",
 };
 
 /**
@@ -130,6 +144,7 @@ export const oauthAttributes = [
   "native-client-id",
   "native-redirect-uri",
   "api-base-url",
+  "openlink-url",
 ] as const;
 
 export type OauthAttributeName = (typeof oauthAttributes)[number];
@@ -159,6 +174,7 @@ export const resolveConfig = (attrs: Record<string, unknown>): OauthConfig => {
     nativeClientId: str("native-client-id", defaultConfig.nativeClientId),
     nativeRedirectUri: str("native-redirect-uri", defaultConfig.nativeRedirectUri),
     apiBaseUrl: str("api-base-url", defaultConfig.apiBaseUrl),
+    openlinkUrl: str("openlink-url", defaultConfig.openlinkUrl),
   };
 };
 
