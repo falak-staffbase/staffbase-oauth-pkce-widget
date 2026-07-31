@@ -199,12 +199,22 @@ export const forEnvironment = (config: OauthConfig, nativeWebview: boolean): Oau
     return { ...config, clientId: config.nativeClientId, redirectUri: config.nativeRedirectUri, flowMode };
   }
 
-  // No dedicated native client: attempt the HTTPS callback with the web client. The app's
-  // HTTPS origin cannot be derived from `window.location` under `capacitor://`, but
-  // `apiBaseUrl` already names it — so reuse it rather than asking for the same value twice.
+  // No dedicated native client: attempt the HTTPS callback with the web client.
+  //
+  // An explicitly configured HTTPS `redirect-uri` wins, so one field can serve both web and
+  // native — which matters because the callback should land on the *page* the widget sits
+  // on, not the app root. Only when it is still the webview's own `capacitor://` origin
+  // (the default) do we fall back to `apiBaseUrl`, since the app's HTTPS origin cannot be
+  // derived from `window.location` here.
+  const configuredIsHttps = /^https?:\/\//.test(config.redirectUri);
+
   return {
     ...config,
-    redirectUri: config.apiBaseUrl !== "" ? `${config.apiBaseUrl}/` : config.redirectUri,
+    redirectUri: configuredIsHttps
+      ? config.redirectUri
+      : config.apiBaseUrl !== ""
+        ? `${config.apiBaseUrl}/`
+        : config.redirectUri,
     flowMode,
   };
 };

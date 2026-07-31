@@ -581,6 +581,16 @@ describe("native app webview (Capacitor)", () => {
     expect(usingNativeClient(bothConfig, false)).toBe(false);
   });
 
+  it("prefers an explicitly configured HTTPS redirect URI in the native webview", () => {
+    // One field serves both contexts, and the callback lands on the page the widget is on
+    // rather than the app root — which is where it has to be for the handoff to render.
+    const page = "https://ccmuhammad.staffbase.com/content/page/6a6bfb425e1b4f25ae10dcd9";
+    const effective = forEnvironment({ ...webConfig, redirectUri: page, apiBaseUrl: "https://app.example" }, true);
+
+    expect(effective.redirectUri).toBe(page);
+    expect(effective.flowMode).toBe("redirect");
+  });
+
   it("falls back to the web client with an HTTPS callback when no native client is set", () => {
     // The untested permutation, reachable with no configuration: the app's HTTPS origin
     // is taken from api-base-url, since it cannot be derived from window.location here.
