@@ -139,7 +139,7 @@ export const environmentBlockers = (
   // so the PKCE verifier in sessionStorage is still reachable.
   if (report.nativeWebview && !options.nativeFlowConfigured) {
     blockers.push(
-      `Native app webview: this document is served over "${report.scheme}" (origin "${report.origin}"), not HTTPS — the Staffbase mobile app hosts widget content in a Capacitor webview under a custom scheme. The popup mechanism cannot work here (window.open returns null), and the standard HTTPS redirect URI would return the code to a different origin than the one holding the PKCE verifier. To attempt the native flow, register a second OAuth client with a "capacitor://…" redirect URI and set the native-client-id / native-redirect-uri attributes. Otherwise authentication has to be brokered by the platform — widgetApi.getIntegration() — or by a custom plugin, which gets a real HTTPS origin.`,
+      `Native app webview: this document is served over "${report.scheme}" (origin "${report.origin}"), not HTTPS — the Staffbase mobile app hosts widget content in a Capacitor webview under a custom scheme. Both routes were tested on iOS and neither works: window.open returns null, so there is no popup to read back; and a full-page redirect to a "capacitor://" redirect URI is handed to the system browser, which cannot deliver it back to the app ("Safari cannot open the page because the address is invalid" — the scheme is not registered as an external URL scheme). Authentication in the native app has to be brokered by the platform — widgetApi.getIntegration() — or by a custom plugin, which gets a real HTTPS origin. Setting native-client-id re-attempts the custom-scheme flow, but it is expected to fail.`,
     );
   }
 

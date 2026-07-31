@@ -66,19 +66,21 @@ Probed on an iOS device (see the Diagnostics panel):
 
 | Observation | Consequence |
 |---|---|
-| `window.open` returns **null** | **Decisive.** No popup, no `opener`, nothing to read back. Handed to the system browser. |
-| `StaffbaseDeepLink` plugin present | Deep-link routing is owned by Staffbase's native code; a `capacitor://` callback would be consumed by their handler, not ours |
-| `Browser` plugin **absent** | No way to open the IdP in a controlled auth session from widget JS |
-| `CapacitorHttp` present | The one good news: the token exchange would bypass CORS natively |
-| `App` plugin reachable | `appUrlOpen` exists in principle, but see `StaffbaseDeepLink` |
+| `window.open` returns **null** | No popup, no `opener`, nothing to read back |
+| Full-page redirect | Handed to the **system browser**, not kept in the webview |
+| `capacitor://` redirect URI | **Safari: "cannot open the page because the address is invalid"** — the scheme is not registered as an external URL scheme, so the code cannot come back |
+| `StaffbaseDeepLink` plugin present | Deep-link routing is owned by Staffbase's native code, not interceptable from widget JS |
+| `Browser` plugin **absent** | No way to open the IdP in a controlled auth session |
+| `CapacitorHttp` present | Would have bypassed CORS on the token exchange — moot |
 
-Redirect mode does not rescue it either: the code would return to the app's **HTTPS**
-origin while the PKCE verifier sits in `sessionStorage` under **`capacitor://`** — a
-different origin, so the verifier is unreachable and the code cannot be redeemed.
+Both routes were tried end to end, including registering a second OAuth client with a
+`capacitor://staffbase.com/` redirect URI. The IdP accepts the custom scheme; **the
+device cannot deliver it**. An HTTPS redirect URI fails differently but just as fatally:
+the code returns to the app's HTTPS origin while the PKCE verifier sits under
+`capacitor://`, a different origin.
 
-Registering `capacitor://staffbase.com/` as a redirect URI does not help. The missing
-piece is on the device (external URL-scheme registration) and in the app's deep-link
-handler, neither of which is reachable from OAuth configuration or widget JavaScript.
+The missing pieces are external URL-scheme registration on the device and the app's
+deep-link handler — neither reachable from OAuth configuration or widget JavaScript.
 
 In the native app, authentication has to be brokered by the platform
 (`widgetApi.getIntegration()`) or by a custom plugin, which gets a real HTTPS origin.

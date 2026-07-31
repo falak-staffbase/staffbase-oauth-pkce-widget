@@ -91,10 +91,18 @@ export const defaultConfig: OauthConfig = {
   testApiPath: "/api/users?limit=3",
   identityPath: "/auth/discover",
   /**
-   * The `native_oauth_test` client, whose redirect URI is the webview's own custom
-   * scheme. Defaulted like `clientId` above so the native path needs no configuration.
+   * Empty on purpose: the native flow was tried on iOS and does not work.
+   *
+   * `location.assign` to the IdP is handed to the system browser rather than staying in
+   * the webview, and Safari then cannot deliver the `capacitor://` redirect back —
+   * "Safari cannot open the page because the address is invalid", because `capacitor://`
+   * is not registered as an external URL scheme for the app.
+   *
+   * Set `native-client-id` (e.g. to the `native_oauth_test` client
+   * `c725e000-2bc8-487c-885c-a18758ff060f`) to re-attempt, should the app ever register
+   * the scheme. Until then the blocker message is more useful than a broken redirect.
    */
-  nativeClientId: "c725e000-2bc8-487c-885c-a18758ff060f",
+  nativeClientId: "",
   nativeRedirectUri: "capacitor://staffbase.com/",
   /**
    * Hardcoded to the test app rather than left empty, because under `capacitor://` the
