@@ -165,7 +165,10 @@ export const useOauth = (config: OauthConfig, environment: EnvironmentReport): O
         // browser, while the verifier stayed in the app's webview. A Staffbase deep link
         // can carry the code back there — but only if the *user taps it*, since iOS does
         // not fire universal links for redirect targets.
-        if (response.code && response.state && config.openlinkUrl !== "") {
+        // Only from the browser. Inside the app the deep link points back here, so offering
+        // it would loop; a missing verifier there means the code genuinely arrived without
+        // its transaction, which is worth reporting as the failure it is.
+        if (response.code && response.state && config.openlinkUrl !== "" && !environment.nativeWebview) {
           setHandoff({ code: response.code, state: response.state });
           append("info", "Authorization code found without a verifier — offering a deep-link handoff into the app.");
           return;
@@ -218,7 +221,7 @@ export const useOauth = (config: OauthConfig, environment: EnvironmentReport): O
         clearTransaction();
       }
     },
-    [append, config, fail],
+    [append, config, environment.nativeWebview, fail],
   );
 
   /**
