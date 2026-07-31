@@ -199,6 +199,8 @@ describe("environment blockers", () => {
     subtleCryptoAvailable: true,
     secureContext: true,
     webkit: false,
+    scheme: "https:",
+    nativeWebview: false,
   };
 
   it("rejects an opaque origin and names the fix", () => {
@@ -258,6 +260,44 @@ describe("environment blockers", () => {
   });
 });
 
+describe("native app webview (Capacitor)", () => {
+  // What the Staffbase iOS app actually reports.
+  const native: EnvironmentReport = {
+    framed: false,
+    origin: "capacitor://staffbase.com",
+    opaqueOrigin: false,
+    storageAvailable: true,
+    subtleCryptoAvailable: true,
+    secureContext: true,
+    webkit: true,
+    scheme: "capacitor:",
+    nativeWebview: true,
+  };
+
+  it("blocks the flow and points at the platform integration path", () => {
+    const blockers = environmentBlockers(native);
+
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toMatch(/capacitor:/);
+    expect(blockers[0]).toMatch(/getIntegration/);
+    expect(blockers[0]).toMatch(/web app only/);
+  });
+
+  it("suppresses the origin-mismatch advice, which cannot work here", () => {
+    // Registering `capacitor://staffbase.com/` as a redirect URI is a dead end, so the
+    // generic mismatch message must not be shown alongside the real explanation.
+    const blockers = configurationBlockers("https://ccmuhammad.staffbase.com/", native);
+
+    expect(blockers).toEqual([]);
+  });
+
+  it("still reports a genuine origin mismatch on the web", () => {
+    const web = { ...native, origin: "https://ccmuhammad.staffbase.com", scheme: "https:", nativeWebview: false };
+
+    expect(configurationBlockers("https://elsewhere.example/", web)).toHaveLength(1);
+  });
+});
+
 describe("cross-site / WebKit warnings", () => {
   const base: EnvironmentReport = {
     framed: false,
@@ -267,6 +307,8 @@ describe("cross-site / WebKit warnings", () => {
     subtleCryptoAvailable: true,
     secureContext: true,
     webkit: false,
+    scheme: "https:",
+    nativeWebview: false,
   };
   const IDP = "https://id-us1.staffbase.com/oauth2/auth";
 

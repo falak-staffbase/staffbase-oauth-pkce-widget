@@ -342,6 +342,7 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
             `token endpoint:   ${config.tokenUri}`,
             `API call target:  ${apiUrl}`,
             "",
+            `scheme:           ${oauth.environment.scheme}${oauth.environment.nativeWebview ? "  ← native webview, not HTTPS" : ""}`,
             `app site:         ${registrableDomain(oauth.environment.origin) ?? "?"}`,
             `idp site:         ${registrableDomain(config.authorizeUri) ?? "?"}`,
             `cross-site:       ${isCrossSite(oauth.environment.origin, config.authorizeUri) ? "YES — ITP applies on Safari/iOS" : "no"}`,

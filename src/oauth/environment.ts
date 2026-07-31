@@ -28,6 +28,14 @@ export interface EnvironmentReport {
   secureContext: boolean;
   /** Best-effort WebKit detection: Safari, plus every in-app browser on iOS. */
   webkit: boolean;
+  /** e.g. `https:`, or `capacitor:` inside the Staffbase native app. */
+  scheme: string;
+  /**
+   * True when the document is served over a non-HTTP(S) scheme, which is how a Capacitor
+   * or Cordova webview hosts local content. This is fatal for a browser-based redirect
+   * flow — see `environmentBlockers`.
+   */
+  nativeWebview: boolean;
 }
 
 /**
@@ -92,6 +100,8 @@ export const inspectEnvironment = (): EnvironmentReport => {
     secureContext: window.isSecureContext,
     // Every iOS browser is WebKit under the hood, so match the engine, not the brand.
     webkit: /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg/.test(navigator.userAgent),
+    scheme: window.location.protocol,
+    nativeWebview: !["http:", "https:"].includes(window.location.protocol),
   };
 };
 
@@ -101,6 +111,14 @@ export const inspectEnvironment = (): EnvironmentReport => {
  */
 export const environmentBlockers = (report: EnvironmentReport): string[] => {
   const blockers: string[] = [];
+
+  if (report.nativeWebview) {
+    // Checked first: it also explains the origin mismatch that `configurationBlockers`
+    // would otherwise report with advice that cannot work here.
+    blockers.push(
+      `Native app webview: this document is served over "${report.scheme}" (origin "${report.origin}"), not HTTPS — the Staffbase mobile app hosts widget content in a Capacitor webview under a custom scheme. A browser-based authorization-code flow cannot complete here, for reasons no OAuth configuration can fix: the IdP will not redirect to a custom scheme in a form the widget can read, a custom-scheme origin cannot reliably pass CORS on the token endpoint, and same-origin relative paths like "/api/users" do not resolve to the Staffbase API. In the native app, authentication has to be brokered by the platform — that is what widgetApi.getIntegration() is for — or handed to the system browser through native plugin APIs that widget JavaScript cannot reach. This flow is viable on the web app only.`,
+    );
+  }
 
   if (report.opaqueOrigin) {
     blockers.push(
@@ -163,7 +181,10 @@ export const configurationBlockers = (redirectUri: string, report: EnvironmentRe
     return [`Redirect URI "${redirectUri}" is not a valid absolute URL.`];
   }
 
-  if (report.opaqueOrigin || redirectOrigin === report.origin) {
+  // A native webview always "mismatches", since its origin is a custom scheme. Saying so
+  // here would advise registering `capacitor://…` as a redirect URI, which cannot work —
+  // `environmentBlockers` reports the real reason instead.
+  if (report.opaqueOrigin || report.nativeWebview || redirectOrigin === report.origin) {
     return [];
   }
 

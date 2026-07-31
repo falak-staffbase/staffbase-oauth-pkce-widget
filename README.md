@@ -53,6 +53,30 @@ Popup mode collects the code three ways, in order of robustness:
 3. **`postMessage`** — if the widget is mounted on the redirect page, that instance posts
    the response to its opener (pinned to `window.location.origin`) and closes.
 
+## This does not work in the Staffbase native app
+
+Verified on iOS: the mobile app hosts widget content in a **Capacitor webview** whose
+origin is a custom scheme, not HTTPS.
+
+```
+scheme:  capacitor:
+origin:  capacitor://staffbase.com
+```
+
+A browser-based authorization-code flow cannot complete there, and no OAuth
+configuration fixes it:
+
+- the IdP will not redirect to a custom scheme in a form the widget can read;
+- a custom-scheme origin cannot reliably pass CORS on the token endpoint;
+- same-origin relative paths like `/api/users` do not resolve to the Staffbase API.
+
+Registering `capacitor://staffbase.com/` as a redirect URI is a dead end — the widget
+detects this case explicitly and says so rather than suggesting it.
+
+In the native app, authentication has to be brokered by the platform
+(`widgetApi.getIntegration()`), or handed to the system browser via native plugin APIs
+that widget JavaScript cannot reach. **This flow is viable on the web app only.**
+
 ## The redirect URI must be on the widget's own origin
 
 This is the single most common way to break the flow, and it fails silently — the popup
