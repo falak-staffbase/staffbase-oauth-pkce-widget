@@ -246,18 +246,6 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
         </div>
       )}
 
-      {/* Warnings, unlike blockers, never disable sign-in — they explain a failure if one comes. */}
-      {warnings.length > 0 && (
-        <div style={{ ...styles.warning, marginTop: 12 }}>
-          <p style={{ ...styles.label, marginTop: 0 }}>Heads up</p>
-          {warnings.map((warning) => (
-            <p key={warning} style={{ marginBottom: 0 }}>
-              {warning}
-            </p>
-          ))}
-        </div>
-      )}
-
       <div style={styles.row}>
         {/*
           Never disabled by findings, only while a flow is in flight. Known problems are
@@ -401,6 +389,22 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
 
       <details>
         <summary style={{ cursor: "pointer", fontWeight: 600, margin: "12px 0 8px" }}>Diagnostics</summary>
+
+        {/*
+          Kept inside the collapsed section rather than shown as a banner: these are risks to
+          consult when something fails, not problems needing attention right now, and an amber
+          box on an otherwise working widget reads as alarming.
+        */}
+        {warnings.length > 0 && (
+          <div style={{ ...styles.warning, marginBottom: 12 }}>
+            <p style={{ ...styles.label, marginTop: 0 }}>Heads up</p>
+            {warnings.map((warning) => (
+              <p key={warning} style={{ marginBottom: 0 }}>
+                {warning}
+              </p>
+            ))}
+          </div>
+        )}
         <pre style={styles.pre}>
           {[
             `build:            ${typeof __BUILD_TIME__ === "string" ? __BUILD_TIME__ : "unknown"}`,

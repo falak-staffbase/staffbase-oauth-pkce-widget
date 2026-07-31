@@ -94,6 +94,20 @@ describe("OauthClient", () => {
     expect(String(fetchMock.mock.calls[1][0])).not.toContain("some-other-app");
   });
 
+  it("keeps the cross-site warning inside collapsed Diagnostics, not as a banner", () => {
+    // The widget gets screen-shared and demoed. An amber box on an otherwise working flow
+    // reads as alarming, so risks belong behind the collapsed section.
+    renderWidget();
+
+    const headsUp = screen.queryByText("Heads up");
+    if (headsUp) {
+      expect(headsUp.closest("details")).not.toBeNull();
+    }
+
+    // Nothing alarming above the fold while the flow is healthy.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("disables token actions until a token exists", () => {
     renderWidget();
 
