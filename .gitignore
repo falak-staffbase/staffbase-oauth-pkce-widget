@@ -1,0 +1,16 @@
+node_modules/
+
+# Built widget bundle. Committed deliberately when publishing via GitHub Pages or
+# jsDelivr, since Staffbase loads the widget from a URL rather than building it.
+# Un-comment to keep builds out of the repo.
+# dist/
+
+*.log
+npm-debug.log*
+.DS_Store
+.idea/
+.vscode/
+coverage/
+*.tsbuildinfo
+.env
+.env.local

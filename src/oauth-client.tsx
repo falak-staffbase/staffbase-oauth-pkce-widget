@@ -1,0 +1,372 @@
+/*!
+ * Copyright 2026, Staffbase SE and contributors.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import React, { CSSProperties, ReactElement, useEffect, useState } from "react";
+import { BlockAttributes, WidgetApi } from "widget-sdk";
+
+import { isPopupCallback, respondToOpener } from "./oauth/callback";
+import { OauthAttributeName, resolveConfig } from "./oauth/config";
+import {
+  configurationBlockers,
+  environmentBlockers,
+  environmentWarnings,
+  isCrossSite,
+  registrableDomain,
+} from "./oauth/environment";
+import { compareIdentity, fetchTokenIdentity, IdentityComparison, TokenIdentity } from "./oauth/identity";
+import { useOauth } from "./oauth/use-oauth";
+
+/**
+ * What arrives from DOM attributes. An intersection rather than an `extends`: every
+ * attribute is optional (the widget falls back to the registered defaults), which an
+ * interface cannot express against `BlockAttributes`' index signature.
+ */
+export type OauthClientAttributes = BlockAttributes & Partial<Record<OauthAttributeName, string>>;
+
+/**
+ * What the component receives. Deliberately *not* intersected with `BlockAttributes`:
+ * its `string | number | boolean` index signature would reject `widgetApi`, which is an
+ * object and therefore cannot travel as a DOM attribute.
+ */
+export type OauthClientProps = Partial<Record<OauthAttributeName, string>> & {
+  contentLanguage: string;
+  /** Supplied by the block factory, not by a DOM attribute. Absent in unit tests. */
+  widgetApi?: Pick<WidgetApi, "getUserInformation">;
+};
+
+const styles: Record<string, CSSProperties> = {
+  card: {
+    border: "1px solid #e0e0e0",
+    borderRadius: 6,
+    padding: 16,
+    fontFamily: "inherit",
+    fontSize: 14,
+    lineHeight: 1.5,
+  },
+  row: { display: "flex", flexWrap: "wrap", gap: 8, margin: "12px 0" },
+  button: {
+    padding: "8px 14px",
+    borderRadius: 4,
+    border: "1px solid #c0c0c0",
+    background: "#fff",
+    cursor: "pointer",
+    font: "inherit",
+  },
+  pre: {
+    background: "#f7f7f7",
+    border: "1px solid #ececec",
+    borderRadius: 4,
+    padding: 10,
+    margin: 0,
+    overflowX: "auto",
+    fontSize: 12,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-all",
+  },
+  error: {
+    background: "#fdecea",
+    border: "1px solid #f5c6c2",
+    borderRadius: 4,
+    padding: 10,
+    color: "#8a1c14",
+  },
+  warning: {
+    background: "#fff8e1",
+    border: "1px solid #ffe0a3",
+    borderRadius: 4,
+    padding: 10,
+    color: "#6b4e00",
+  },
+  label: { fontWeight: 600 },
+};
+
+/**
+ * Access tokens are the point of the widget, but showing one in full invites it being
+ * pasted into a ticket. Show enough to identify it, not enough to use it.
+ */
+const abbreviate = (value: string): string =>
+  value.length <= 24 ? value : `${value.slice(0, 12)}…${value.slice(-8)} (${value.length} chars)`;
+
+const formatTime = (at: number): string => new Date(at).toISOString().slice(11, 23);
+
+/**
+ * The document the IdP redirected back to when running in popup mode.
+ *
+ * This is the same widget bundle as the one that started the flow — the redirect URI is
+ * the Staffbase app root, so the popup boots the whole SPA and mounts this widget again.
+ * All it has to do is hand the response to its opener and get out of the way.
+ */
+const PopupCallback = (): ReactElement => {
+  useEffect(() => {
+    respondToOpener();
+  }, []);
+
+  return (
+    <div style={styles.card}>
+      <p>Completing sign-in — you can close this window.</p>
+    </div>
+  );
+};
+
+export const OauthClient = (props: OauthClientProps): ReactElement => {
+  const config = resolveConfig(props);
+  const oauth = useOauth(config);
+  const [apiResult, setApiResult] = useState<string | null>(null);
+  const [identity, setIdentity] = useState<{ comparison: IdentityComparison; probe: TokenIdentity } | null>(null);
+  const [identityError, setIdentityError] = useState<string | null>(null);
+
+  /**
+   * The decisive check that this is a user-context token: ask the API who the token
+   * belongs to, and compare against who the platform says is viewing the page.
+   */
+  const verifyIdentity = (): void => {
+    if (!oauth.tokens || !props.widgetApi) return;
+
+    setIdentity(null);
+    setIdentityError("Checking…");
+
+    void Promise.all([
+      fetchTokenIdentity(config.identityPath, oauth.tokens),
+      props.widgetApi.getUserInformation(),
+    ])
+      .then(([probe, profile]) => {
+        setIdentityError(null);
+        setIdentity({ comparison: compareIdentity(probe.userId, profile.id ?? null), probe });
+      })
+      .catch((cause: unknown) => setIdentityError(`Identity check failed: ${String(cause)}`));
+  };
+
+  /**
+   * `testApiPath` is normally relative, so it resolves against the origin the widget is
+   * served from — which is the same app the OAuth client is registered in, and therefore
+   * the only app whose API this token means anything to. Resolving it eagerly lets the UI
+   * show the absolute URL, so it is obvious which app is being called.
+   */
+  const apiUrl = ((): string => {
+    try {
+      return new URL(config.testApiPath, window.location.origin).href;
+    } catch {
+      return config.testApiPath;
+    }
+  })();
+
+  const callTestApi = (): void => {
+    if (!oauth.tokens) return;
+
+    setApiResult("Calling…");
+    void fetch(apiUrl, {
+      headers: { Authorization: `${oauth.tokens.tokenType} ${oauth.tokens.accessToken}` },
+    })
+      .then(async (response) => {
+        const body = await response.text();
+        setApiResult(`HTTP ${response.status}\n\n${body.slice(0, 2000)}`);
+      })
+      .catch((cause: unknown) => setApiResult(`Request failed: ${String(cause)}`));
+  };
+
+  if (isPopupCallback()) {
+    return <PopupCallback />;
+  }
+
+  const { status, tokens, error } = oauth;
+  const busy = status === "authorizing" || status === "exchanging";
+  const blockers = [
+    ...environmentBlockers(oauth.environment),
+    ...configurationBlockers(config.redirectUri, oauth.environment),
+  ];
+  const warnings = environmentWarnings(oauth.environment, config.authorizeUri);
+
+  return (
+    <div style={styles.card}>
+      <div>
+        <span style={styles.label}>Status:</span> {status}
+        {" · "}
+        <span style={styles.label}>Mode:</span> {config.flowMode}
+      </div>
+
+      {blockers.length > 0 && (
+        <div role="alert" style={{ ...styles.error, marginTop: 12 }}>
+          <p style={{ ...styles.label, marginTop: 0 }}>This environment cannot complete an OAuth flow</p>
+          {blockers.map((blocker) => (
+            <p key={blocker} style={{ marginBottom: 0 }}>
+              {blocker}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* Warnings, unlike blockers, never disable sign-in — they explain a failure if one comes. */}
+      {warnings.length > 0 && (
+        <div style={{ ...styles.warning, marginTop: 12 }}>
+          <p style={{ ...styles.label, marginTop: 0 }}>Heads up</p>
+          {warnings.map((warning) => (
+            <p key={warning} style={{ marginBottom: 0 }}>
+              {warning}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <div style={styles.row}>
+        <button style={styles.button} onClick={oauth.login} disabled={busy || blockers.length > 0}>
+          {tokens ? "Re-authorize" : "Sign in with Staffbase ID"}
+        </button>
+        <button style={styles.button} onClick={oauth.refresh} disabled={!tokens?.refreshToken}>
+          Refresh token
+        </button>
+        <button style={styles.button} onClick={callTestApi} disabled={!tokens}>
+          Call API
+        </button>
+        <button
+          style={styles.button}
+          onClick={verifyIdentity}
+          disabled={!tokens || !props.widgetApi}
+          title={props.widgetApi ? undefined : "widgetApi is only available when hosted by Staffbase"}
+        >
+          Verify identity
+        </button>
+        <button style={styles.button} onClick={oauth.reset} disabled={!tokens && status === "idle"}>
+          Clear local state
+        </button>
+        <button style={styles.button} onClick={oauth.logout}>
+          Logout at IdP
+        </button>
+      </div>
+
+      {error && (
+        <div role="alert" style={styles.error}>
+          {error}
+        </div>
+      )}
+
+      {oauth.returnTo && status === "authenticated" && (
+        <p>
+          You started this flow at <a href={oauth.returnTo}>{oauth.returnTo}</a>.
+        </p>
+      )}
+
+      {oauth.callback && (
+        <>
+          <p style={styles.label}>Authorization callback</p>
+          <pre style={styles.pre}>
+            {[
+              `code:            ${oauth.callback.code}`,
+              `state:           ${oauth.callback.state}`,
+              `code_verifier:   ${oauth.callback.codeVerifier}`,
+              `code_challenge:  ${oauth.callback.codeChallenge}`,
+              `challenge method: S256  (= BASE64URL(SHA256(verifier)))`,
+              `collected via:   ${oauth.callback.collectedVia}`,
+            ].join("\n")}
+          </pre>
+          <p style={{ fontSize: 12, color: "#767676", margin: "4px 0 12px" }}>
+            The code is single-use and already spent — but the verifier is shown in full, so treat this panel as
+            sensitive and keep it out of screenshots.
+          </p>
+        </>
+      )}
+
+      {tokens && (
+        <>
+          <p style={styles.label}>Token</p>
+          <pre style={styles.pre}>
+            {[
+              `token_type:    ${tokens.tokenType}`,
+              `access_token:  ${abbreviate(tokens.accessToken)}`,
+              `refresh_token: ${tokens.refreshToken ? abbreviate(tokens.refreshToken) : "(none — was `offline` granted?)"}`,
+              `scope:         ${tokens.scope ?? "(not reported)"}`,
+              `expires_at:    ${tokens.expiresAt ? new Date(tokens.expiresAt).toISOString() : "(not reported)"}`,
+            ].join("\n")}
+          </pre>
+        </>
+      )}
+
+      {apiResult && (
+        <>
+          <p style={styles.label}>
+            {"GET "}
+            {apiUrl}
+          </p>
+          <pre style={styles.pre}>{apiResult}</pre>
+        </>
+      )}
+
+      {identityError && <p style={styles.pre}>{identityError}</p>}
+
+      {identity && (
+        <>
+          <p style={styles.label}>Identity check</p>
+          <div
+            style={
+              identity.comparison.verdict === "match"
+                ? { ...styles.pre, background: "#eaf6ec", border: "1px solid #c3e6cb" }
+                : styles.error
+            }
+          >
+            <p style={{ ...styles.label, marginTop: 0 }}>
+              {identity.comparison.verdict === "match"
+                ? "MATCH — token is bound to the acting user"
+                : identity.comparison.verdict === "mismatch"
+                  ? "MISMATCH — token is not the viewing user"
+                  : "INCONCLUSIVE"}
+            </p>
+            <p style={{ marginBottom: 0 }}>{identity.comparison.detail}</p>
+          </div>
+          <pre style={{ ...styles.pre, marginTop: 8 }}>
+            {[
+              `token user id     (${config.identityPath}): ${identity.comparison.tokenUserId ?? "not found"}`,
+              `platform user id  (widgetApi):              ${identity.comparison.platformUserId ?? "not found"}`,
+              "",
+              `HTTP ${identity.probe.status}`,
+              identity.probe.raw,
+            ].join("\n")}
+          </pre>
+        </>
+      )}
+
+      <details>
+        <summary style={{ cursor: "pointer", fontWeight: 600, margin: "12px 0 8px" }}>Diagnostics</summary>
+        <pre style={styles.pre}>
+          {[
+            `client_id:        ${config.clientId}`,
+            `redirect_uri:     ${config.redirectUri}`,
+            `token endpoint:   ${config.tokenUri}`,
+            `API call target:  ${apiUrl}`,
+            "",
+            `app site:         ${registrableDomain(oauth.environment.origin) ?? "?"}`,
+            `idp site:         ${registrableDomain(config.authorizeUri) ?? "?"}`,
+            `cross-site:       ${isCrossSite(oauth.environment.origin, config.authorizeUri) ? "YES — ITP applies on Safari/iOS" : "no"}`,
+            `webkit engine:    ${oauth.environment.webkit ? "yes (Safari / any iOS browser)" : "no"}`,
+            "",
+            `in iframe:        ${oauth.environment.framed ? "yes" : "no"}`,
+            `origin:           ${oauth.environment.origin}`,
+            `opaque origin:    ${oauth.environment.opaqueOrigin ? "YES — sandboxed, popup flow cannot work" : "no"}`,
+            `sessionStorage:   ${oauth.environment.storageAvailable ? "available" : "BLOCKED"}`,
+            `crypto.subtle:    ${oauth.environment.subtleCryptoAvailable ? "available" : "MISSING"}`,
+            `secure context:   ${oauth.environment.secureContext ? "yes" : "no"}`,
+          ].join("\n")}
+        </pre>
+      </details>
+
+      {oauth.log.length > 0 && (
+        <>
+          <p style={styles.label}>Flow trace</p>
+          <pre style={styles.pre}>
+            {oauth.log
+              .map((entry) => `${formatTime(entry.at)} ${entry.level === "error" ? "✗" : "·"} ${entry.message}`)
+              .join("\n")}
+          </pre>
+        </>
+      )}
+    </div>
+  );
+};
