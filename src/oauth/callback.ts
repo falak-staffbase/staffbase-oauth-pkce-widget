@@ -58,6 +58,10 @@ const cleanUrl = (): void => {
  * race we would sometimes lose. Reading it here — and immediately parking the result in
  * `sessionStorage` — turns "did the SPA rewrite the URL yet?" into a non-question.
  */
+/** Kept verbatim so Diagnostics can show exactly what the URL looked like at load. */
+export const hrefAtLoad = window.location.href;
+export const searchAtLoad = window.location.search;
+
 const snapshot: AuthorizationResponse = parseAuthorizationResponse(window.location.search);
 
 if (snapshot.code && snapshot.state) {

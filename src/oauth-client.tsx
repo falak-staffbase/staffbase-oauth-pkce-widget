@@ -14,7 +14,7 @@
 import React, { CSSProperties, ReactElement, useEffect, useMemo, useState } from "react";
 import { BlockAttributes, WidgetApi } from "widget-sdk";
 
-import { isPopupCallback, respondToOpener } from "./oauth/callback";
+import { hrefAtLoad, isPopupCallback, respondToOpener, searchAtLoad } from "./oauth/callback";
 import {
   capacitorFindings,
   inspectCapacitor,
@@ -144,6 +144,7 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [popupProbe, setPopupProbe] = useState<PopupProbe | null>(null);
   const [schemes, setSchemes] = useState<SchemeProbe[] | null>(null);
+  const [recheck, setRecheck] = useState<boolean | null>(null);
 
   const runSchemeProbe = (): void => {
     void probeSchemes(SCHEME_CANDIDATES).then(setSchemes);
@@ -443,6 +444,35 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
             {finding}
           </p>
         ))}
+
+        {/*
+          The direct answer to "was the query stripped?". Both values matter: the load-time
+          snapshot fires once per document, so a deep link routed into an already-running app
+          can put the code on the live URL *after* it was taken.
+        */}
+        <p style={{ ...styles.label, marginTop: 12 }}>URL / query inspection</p>
+        <pre style={styles.pre}>
+          {[
+            `href at load:   ${hrefAtLoad}`,
+            `query at load:  ${searchAtLoad === "" ? "(empty)" : searchAtLoad}`,
+            "",
+            `href now:       ${window.location.href}`,
+            `query now:      ${window.location.search === "" ? "(empty)" : window.location.search}`,
+            "",
+            `code at load:   ${new URLSearchParams(searchAtLoad).get("code") ?? "(none)"}`,
+            `code now:       ${new URLSearchParams(window.location.search).get("code") ?? "(none)"}`,
+          ].join("\n")}
+        </pre>
+        <button style={{ ...styles.button, marginTop: 8 }} onClick={() => setRecheck(oauth.recheckUrl())}>
+          Re-check URL for a code
+        </button>
+        {recheck !== null && (
+          <p style={{ fontSize: 12, color: "#555", margin: "6px 0 0" }}>
+            {recheck
+              ? "Found a code on the live URL and started processing it."
+              : "No unconsumed authorization response on the live URL."}
+          </p>
+        )}
 
         <p style={{ ...styles.label, marginTop: 12 }}>Deep-link plugin surface</p>
         <pre style={styles.pre}>

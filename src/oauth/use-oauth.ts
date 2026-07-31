@@ -113,6 +113,8 @@ export interface OauthState {
   refresh: () => void;
   logout: () => void;
   reset: () => void;
+  /** Re-read the live URL for a code that arrived after the load-time snapshot. */
+  recheckUrl: () => boolean;
 }
 
 /**
@@ -262,6 +264,39 @@ export const useOauth = (config: OauthConfig, environment: EnvironmentReport): O
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [append, completeFlow]);
+
+  /**
+   * Re-read the *live* URL for an authorization response.
+   *
+   * The module-level snapshot fires once per document load. A Staffbase deep link routed
+   * into an already-running app changes the URL without reloading the bundle, so the code
+   * can appear after that snapshot was taken. Exposed as an action so it can be triggered
+   * explicitly, and also wired to history events below.
+   */
+  const recheckUrl = useCallback(() => {
+    if (consumed.current) return false;
+
+    const response = parseAuthorizationResponse(window.location.search);
+    if (!hasAuthorizationResponse(response)) return false;
+
+    consumed.current = true;
+    clearPendingCode();
+    append("info", "Authorization response found on the live URL (after the initial snapshot).");
+    void completeFlow(response, "live URL re-check");
+    return true;
+  }, [append, completeFlow]);
+
+  /** SPA route changes that carry the code in without a document load. */
+  useEffect(() => {
+    const onNavigation = () => void recheckUrl();
+
+    window.addEventListener("popstate", onNavigation);
+    window.addEventListener("hashchange", onNavigation);
+    return () => {
+      window.removeEventListener("popstate", onNavigation);
+      window.removeEventListener("hashchange", onNavigation);
+    };
+  }, [recheckUrl]);
 
   const login = useCallback(() => {
     setError(null);
@@ -493,5 +528,19 @@ export const useOauth = (config: OauthConfig, environment: EnvironmentReport): O
     }
   })();
 
-  return { status, tokens, error, log, callback, handoffUrl, environment, returnTo, login, refresh, logout, reset };
+  return {
+    status,
+    tokens,
+    error,
+    log,
+    callback,
+    handoffUrl,
+    environment,
+    returnTo,
+    login,
+    refresh,
+    logout,
+    reset,
+    recheckUrl,
+  };
 };

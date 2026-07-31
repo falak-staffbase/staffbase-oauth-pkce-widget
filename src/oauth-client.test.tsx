@@ -378,6 +378,29 @@ describe("Capacitor bridge probe", () => {
   });
 });
 
+describe("URL inspection", () => {
+  it("shows both the load-time and live URL so a stripped query is visible", async () => {
+    renderWidget();
+
+    const panel = await screen.findByText(/href at load:/);
+
+    // Both matter: the load snapshot fires once per document, so a deep link routed into a
+    // running app can add the code to the live URL after it was taken.
+    expect(panel).toHaveTextContent(/query at load:/);
+    expect(panel).toHaveTextContent(/query now:/);
+    expect(panel).toHaveTextContent(/code at load:/);
+    expect(panel).toHaveTextContent(/code now:/);
+  });
+
+  it("reports when a re-check finds nothing", async () => {
+    renderWidget();
+
+    fireEvent.click(screen.getByRole("button", { name: /Re-check URL for a code/ }));
+
+    expect(await screen.findByText(/No unconsumed authorization response/)).toBeInTheDocument();
+  });
+});
+
 describe("deep-link handoff for a code with no verifier", () => {
   const OPENLINK = "https://ccmuhammad.staffbase.com/openlink/content/plug123/inst456/";
 
