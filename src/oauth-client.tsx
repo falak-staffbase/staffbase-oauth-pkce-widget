@@ -136,11 +136,15 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
   const [popupProbe, setPopupProbe] = useState<PopupProbe | null>(null);
 
   /**
-   * Base for API calls. Under `capacitor://` a relative path would be served from local
-   * assets by Capacitor's scheme handler rather than reaching the Staffbase API, so an
-   * absolute base is mandatory there.
+   * Base for API calls.
+   *
+   * Consulted *only* in the native webview: under `capacitor://` a relative path is served
+   * from local assets by Capacitor's scheme handler rather than reaching the Staffbase API.
+   * On the web the current origin is always right — it is the origin the OAuth client is
+   * registered against — so it wins there regardless of what `api-base-url` says.
    */
-  const apiBase = config.apiBaseUrl || window.location.origin;
+  const apiBase =
+    environment.nativeWebview && config.apiBaseUrl !== "" ? config.apiBaseUrl : window.location.origin;
 
   /**
    * The decisive check that this is a user-context token: ask the API who the token
@@ -370,7 +374,7 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
             `redirect_uri:     ${config.redirectUri}`,
             `flow mode:        ${config.flowMode}${native ? "  (forced: window.open is unusable here)" : ""}`,
             `token endpoint:   ${config.tokenUri}`,
-            `API base:         ${apiBase}${config.apiBaseUrl === "" && native ? "  ← MUST be set for native" : ""}`,
+            `API base:         ${apiBase}${native ? "  (api-base-url; required under capacitor://)" : "  (current origin)"}`,
             `API call target:  ${apiUrl}`,
             "",
             `scheme:           ${oauth.environment.scheme}${oauth.environment.nativeWebview ? "  ← native webview, not HTTPS" : ""}`,

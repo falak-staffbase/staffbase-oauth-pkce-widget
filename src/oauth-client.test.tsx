@@ -62,6 +62,38 @@ describe("OauthClient", () => {
     expect(screen.getByRole("button", { name: /Sign in with Staffbase ID/ })).toBeEnabled();
   });
 
+  it("ignores api-base-url on the web, keeping API calls same-origin", async () => {
+    // Guards a regression: api-base-url is defaulted for the native app, and must not
+    // redirect web API calls to another app's origin (which would also fail CORS).
+    const popup = { closed: false, close: jest.fn(), opener: window, location: { search: "" }, sessionStorage };
+    openMock.mockReturnValue(popup);
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ access_token: "at", token_type: "bearer" }), text: async () => "{}", status: 200 });
+    Object.defineProperty(window, "fetch", { value: fetchMock, writable: true });
+
+    render(
+      <OauthClient
+        {...{
+          contentLanguage: "en_US",
+          "redirect-uri": REDIRECT_URI,
+          "api-base-url": "https://some-other-app.staffbase.com",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Sign in with Staffbase ID/ }));
+    await waitFor(() => expect(openMock).toHaveBeenCalled());
+    popup.location.search = `?code=c&state=${loadTransaction()!.state}`;
+    await screen.findByText(/access_token:/);
+
+    fireEvent.click(screen.getByRole("button", { name: /Call API/ }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(1));
+    expect(String(fetchMock.mock.calls[1][0])).toContain(window.location.origin);
+    expect(String(fetchMock.mock.calls[1][0])).not.toContain("some-other-app");
+  });
+
   it("disables token actions until a token exists", () => {
     renderWidget();
 
@@ -403,7 +435,13 @@ describe("native app webview (Capacitor)", () => {
     nativeWebview: true,
   };
 
-  const webConfig: OauthConfig = { ...defaultConfig, clientId: "web-client", redirectUri: "https://app.example/" };
+  /** Native flow explicitly disabled, overriding the shipped default. */
+  const webConfig: OauthConfig = {
+    ...defaultConfig,
+    clientId: "web-client",
+    redirectUri: "https://app.example/",
+    nativeClientId: "",
+  };
   const bothConfig: OauthConfig = {
     ...webConfig,
     nativeClientId: "native-client",

@@ -53,10 +53,11 @@ export interface OauthConfig {
   nativeClientId: string;
   nativeRedirectUri: string;
   /**
-   * Absolute base for API calls. Required in the native webview: a relative `/api/users`
-   * resolves to `capacitor://staffbase.com/api/users`, which Capacitor's internal scheme
-   * handler serves from local assets instead of reaching the Staffbase API. Empty means
-   * resolve against the current origin, which is correct on the web.
+   * Absolute base for API calls in the **native webview only**. A relative `/api/users`
+   * there resolves to `capacitor://staffbase.com/api/users`, which Capacitor's internal
+   * scheme handler serves from local assets instead of reaching the Staffbase API.
+   *
+   * Ignored on the web, where the current origin is by definition the right one.
    */
   apiBaseUrl: string;
 }
@@ -89,9 +90,18 @@ export const defaultConfig: OauthConfig = {
   flowMode: "popup",
   testApiPath: "/api/users?limit=3",
   identityPath: "/auth/discover",
-  nativeClientId: "",
+  /**
+   * The `native_oauth_test` client, whose redirect URI is the webview's own custom
+   * scheme. Defaulted like `clientId` above so the native path needs no configuration.
+   */
+  nativeClientId: "c725e000-2bc8-487c-885c-a18758ff060f",
   nativeRedirectUri: "capacitor://staffbase.com/",
-  apiBaseUrl: "",
+  /**
+   * Hardcoded to the test app rather than left empty, because under `capacitor://` the
+   * app's HTTPS origin cannot be derived from `window.location` — the webview host is
+   * `staffbase.com`, not the app. Override via `api-base-url` for a different app.
+   */
+  apiBaseUrl: "https://ccmuhammad.staffbase.com",
 };
 
 /**

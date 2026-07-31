@@ -83,7 +83,7 @@ export const configurationSchema: JSONSchema7 = {
     },
     "api-base-url": {
       type: "string",
-      title: "API base URL (required for native)",
+      title: "API base URL (native app only)",
       default: defaultConfig.apiBaseUrl,
     },
   },
@@ -125,6 +125,6 @@ export const uiSchema: UiSchema = {
   },
   "api-base-url": {
     "ui:help":
-      "Absolute origin for API calls, e.g. https://your-app.staffbase.com. Required in the native app: a relative path would resolve against capacitor:// and be served from local assets instead of reaching the API. Leave empty on the web.",
+      "Absolute origin for API calls inside the native app, e.g. https://your-app.staffbase.com — a relative path there would resolve against capacitor:// and be served from local assets instead of reaching the API. Ignored on the web, which always uses the current origin.",
   },
 };
