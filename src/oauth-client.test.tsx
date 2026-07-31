@@ -458,7 +458,7 @@ describe("URL scheme probe", () => {
     delete (window as unknown as { Capacitor?: unknown }).Capacitor;
   });
 
-  it("reports a scheme an installed app claims", async () => {
+  it("reports a custom scheme an installed app claims", async () => {
     (window as unknown as { Capacitor?: unknown }).Capacitor = {
       Plugins: { AppLauncher: { canOpenUrl: async ({ url }: { url: string }) => ({ value: url.startsWith("staffbase:") }) } },
     };
@@ -466,8 +466,22 @@ describe("URL scheme probe", () => {
     const results = await probeSchemes(["staffbase://", "capacitor://staffbase.com/"]);
 
     expect(results[0].canOpen).toBe(true);
-    expect(results[0].detail).toMatch(/claims this scheme/);
+    expect(results[0].detail).toMatch(/custom scheme claimed/);
     expect(results[1].canOpen).toBe(false);
+    expect(results[1].detail).toMatch(/not conclusive/);
+  });
+
+  it("marks an http(s) result as uninformative", async () => {
+    // iOS returns true for any web URL because the browser claims them, which would
+    // otherwise read as evidence that the app handles it.
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      Plugins: { AppLauncher: { canOpenUrl: async () => ({ value: true }) } },
+    };
+
+    const [result] = await probeSchemes(["https://ccmuhammad.staffbase.com/"]);
+
+    expect(result.canOpen).toBe(true);
+    expect(result.detail).toMatch(/uninformative/);
   });
 
   it("reports unknown rather than false when AppLauncher is missing", async () => {

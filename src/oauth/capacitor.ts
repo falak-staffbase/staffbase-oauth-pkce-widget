@@ -166,10 +166,18 @@ export const probeSchemes = async (candidates: string[]): Promise<SchemeProbe[]>
     candidates.map(async (url) => {
       try {
         const result = await launcher.canOpenUrl!({ url });
+        // An http(s) "true" is meaningless: the browser claims every web URL, so this says
+        // nothing about whether the app would handle it. Only a custom scheme is evidence.
+        const web = /^https?:/.test(url);
+
         return {
           url,
           canOpen: result.value,
-          detail: result.value ? "an installed app claims this scheme" : "no app claims it (or not in the query allowlist)",
+          detail: web
+            ? "uninformative — the browser claims all web URLs, so this says nothing about the app"
+            : result.value
+              ? "a custom scheme claimed by an installed app"
+              : "no app claims it (or it is not in this app's query allowlist, so not conclusive)",
         };
       } catch (cause) {
         return { url, canOpen: null, detail: `threw: ${String(cause)}` };
