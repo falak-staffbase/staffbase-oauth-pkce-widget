@@ -15,6 +15,7 @@ import React from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { OauthClient } from "./oauth-client";
+import { capacitorFindings, inspectCapacitor, probePopup } from "./oauth/capacitor";
 import {
   configurationBlockers,
   EnvironmentReport,
@@ -257,6 +258,109 @@ describe("environment blockers", () => {
 
   it("rejects a redirect URI that is not an absolute URL", () => {
     expect(configurationBlockers("/callback", healthy)[0]).toMatch(/not a valid absolute URL/);
+  });
+});
+
+describe("Capacitor bridge probe", () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it("reports nothing reachable on the web", () => {
+    const report = inspectCapacitor();
+
+    expect(report.bridgePresent).toBe(false);
+    expect(capacitorFindings(report)[0]).toMatch(/not reachable/);
+  });
+
+  it("reads platform and plugin list when the bridge is present", () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      getPlatform: () => "ios",
+      isNativePlatform: () => true,
+      Plugins: { App: {}, CapacitorHttp: {}, Browser: {} },
+    };
+
+    const report = inspectCapacitor();
+
+    expect(report.bridgePresent).toBe(true);
+    expect(report.platform).toBe("ios");
+    expect(report.nativePlatform).toBe(true);
+    expect(report.appPluginPresent).toBe(true);
+    expect(report.httpPluginPresent).toBe(true);
+    expect(report.plugins).toEqual(["App", "Browser", "CapacitorHttp"]);
+  });
+
+  it("flags the missing deep-link route when App is absent", () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = { Plugins: { Browser: {} } };
+
+    const findings = capacitorFindings(inspectCapacitor());
+
+    expect(findings.join(" ")).toMatch(/App plugin NOT reachable/);
+    expect(findings.join(" ")).toMatch(/custom-scheme redirect URI cannot work/);
+  });
+
+  it("survives a bridge whose accessors throw", () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      getPlatform: () => {
+        throw new Error("bridge not ready");
+      },
+      Plugins: { App: {} },
+    };
+
+    const report = inspectCapacitor();
+
+    expect(report.bridgePresent).toBe(true);
+    expect(report.platform).toBeNull();
+    expect(report.appPluginPresent).toBe(true);
+  });
+
+  it("always notes what it cannot observe", () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = { Plugins: { App: {} } };
+
+    // The probe must not imply a verdict it has no basis for.
+    expect(capacitorFindings(inspectCapacitor()).join(" ")).toMatch(/external URL scheme/);
+  });
+});
+
+describe("window.open probe", () => {
+  it("closes the window it opened, so probing has no side effects", () => {
+    const win = { opener: window, location: { href: "about:blank" }, close: jest.fn() };
+    openMock.mockReturnValue(win);
+
+    const result = probePopup();
+
+    expect(win.close).toHaveBeenCalled();
+    expect(openMock.mock.calls[0][0]).toBe("about:blank");
+    expect(result.openerIntact).toBe(true);
+    expect(result.sameOriginReadable).toBe(true);
+  });
+
+  it("reports a handoff to the system browser when no handle comes back", () => {
+    openMock.mockReturnValue(null);
+
+    const result = probePopup();
+
+    expect(result.opened).toBe(false);
+    expect(result.detail).toMatch(/system browser/);
+  });
+
+  it("detects a severed opener", () => {
+    openMock.mockReturnValue({ opener: null, location: { href: "about:blank" }, close: jest.fn() });
+
+    expect(probePopup().openerIntact).toBe(false);
+    expect(probePopup().detail).toMatch(/severed/);
+  });
+
+  it("does not throw when the popup cannot be closed", () => {
+    openMock.mockReturnValue({
+      opener: window,
+      location: { href: "about:blank" },
+      close: () => {
+        throw new Error("cannot close");
+      },
+    });
+
+    expect(() => probePopup()).not.toThrow();
   });
 });
 

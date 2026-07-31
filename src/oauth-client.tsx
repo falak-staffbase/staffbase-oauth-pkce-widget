@@ -11,10 +11,11 @@
  * limitations under the License.
  */
 
-import React, { CSSProperties, ReactElement, useEffect, useState } from "react";
+import React, { CSSProperties, ReactElement, useEffect, useMemo, useState } from "react";
 import { BlockAttributes, WidgetApi } from "widget-sdk";
 
 import { isPopupCallback, respondToOpener } from "./oauth/callback";
+import { capacitorFindings, inspectCapacitor, PopupProbe, probePopup } from "./oauth/capacitor";
 import { OauthAttributeName, resolveConfig } from "./oauth/config";
 import {
   configurationBlockers,
@@ -124,6 +125,10 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
   const [apiResult, setApiResult] = useState<string | null>(null);
   const [identity, setIdentity] = useState<{ comparison: IdentityComparison; probe: TokenIdentity } | null>(null);
   const [identityError, setIdentityError] = useState<string | null>(null);
+  const [popupProbe, setPopupProbe] = useState<PopupProbe | null>(null);
+
+  /** Static, so probe once. The popup probe needs a gesture and stays behind a button. */
+  const capacitor = useMemo(inspectCapacitor, []);
 
   /**
    * The decisive check that this is a user-context token: ask the API who the token
@@ -356,6 +361,38 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
             `secure context:   ${oauth.environment.secureContext ? "yes" : "no"}`,
           ].join("\n")}
         </pre>
+        <p style={{ ...styles.label, marginTop: 12 }}>Native bridge probe</p>
+        <pre style={styles.pre}>
+          {[
+            `Capacitor bridge: ${capacitor.bridgePresent ? "present" : "absent"}`,
+            `platform:         ${capacitor.platform ?? "n/a"}`,
+            `native platform:  ${capacitor.nativePlatform ?? "n/a"}`,
+            `App plugin:       ${capacitor.appPluginPresent ? "reachable" : "not reachable"}`,
+            `CapacitorHttp:    ${capacitor.httpPluginPresent ? "present (CORS likely bypassed)" : "not detected"}`,
+            `plugins:          ${capacitor.plugins.length > 0 ? capacitor.plugins.join(", ") : "none exposed"}`,
+          ].join("\n")}
+        </pre>
+        {capacitorFindings(capacitor).map((finding) => (
+          <p key={finding} style={{ fontSize: 12, color: "#555", margin: "6px 0 0" }}>
+            {finding}
+          </p>
+        ))}
+
+        {/* Needs a user gesture, and must stay available even when the flow is blocked. */}
+        <button style={{ ...styles.button, marginTop: 12 }} onClick={() => setPopupProbe(probePopup())}>
+          Probe window.open
+        </button>
+        {popupProbe && (
+          <pre style={{ ...styles.pre, marginTop: 8 }}>
+            {[
+              `opened:            ${popupProbe.opened ? "yes" : "no"}`,
+              `opener intact:     ${popupProbe.openerIntact ? "yes" : "no"}`,
+              `location readable: ${popupProbe.sameOriginReadable ? "yes" : "no"}`,
+              "",
+              popupProbe.detail,
+            ].join("\n")}
+          </pre>
+        )}
       </details>
 
       {oauth.log.length > 0 && (
