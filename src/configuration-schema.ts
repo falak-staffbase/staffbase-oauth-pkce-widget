@@ -71,6 +71,21 @@ export const configurationSchema: JSONSchema7 = {
       title: "Identity endpoint path",
       default: defaultConfig.identityPath,
     },
+    "native-client-id": {
+      type: "string",
+      title: "Native app Client ID (optional)",
+      default: defaultConfig.nativeClientId,
+    },
+    "native-redirect-uri": {
+      type: "string",
+      title: "Native app Redirect URI",
+      default: defaultConfig.nativeRedirectUri,
+    },
+    "api-base-url": {
+      type: "string",
+      title: "API base URL (required for native)",
+      default: defaultConfig.apiBaseUrl,
+    },
   },
 };
 
@@ -99,5 +114,17 @@ export const uiSchema: UiSchema = {
   "identity-path": {
     "ui:help":
       "Endpoint that reports who the token belongs to. 'Verify identity' compares its user id against widgetApi.getUserInformation() to prove the token is bound to the acting user.",
+  },
+  "native-client-id": {
+    "ui:help":
+      "A second OAuth client whose redirect URI is the webview's custom scheme. Used only inside the Staffbase mobile app, where window.open returns null and the HTTPS redirect URI would land on a different origin than the PKCE verifier. Leave empty to disable the native attempt.",
+  },
+  "native-redirect-uri": {
+    "ui:help":
+      "Must match the native client's registered redirect URI exactly, and must be the webview's own origin — check 'origin' in Diagnostics on the device.",
+  },
+  "api-base-url": {
+    "ui:help":
+      "Absolute origin for API calls, e.g. https://your-app.staffbase.com. Required in the native app: a relative path would resolve against capacitor:// and be served from local assets instead of reaching the API. Leave empty on the web.",
   },
 };

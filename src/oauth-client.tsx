@@ -16,11 +16,12 @@ import { BlockAttributes, WidgetApi } from "widget-sdk";
 
 import { isPopupCallback, respondToOpener } from "./oauth/callback";
 import { capacitorFindings, inspectCapacitor, PopupProbe, probePopup } from "./oauth/capacitor";
-import { OauthAttributeName, resolveConfig } from "./oauth/config";
+import { forEnvironment, OauthAttributeName, resolveConfig, usingNativeClient } from "./oauth/config";
 import {
   configurationBlockers,
   environmentBlockers,
   environmentWarnings,
+  inspectEnvironment,
   isCrossSite,
   registrableDomain,
 } from "./oauth/environment";
@@ -120,15 +121,26 @@ const PopupCallback = (): ReactElement => {
 };
 
 export const OauthClient = (props: OauthClientProps): ReactElement => {
-  const config = resolveConfig(props);
-  const oauth = useOauth(config);
+  /** Static for the document's lifetime, and needed before the flow is configured. */
+  const environment = useMemo(inspectEnvironment, []);
+  const capacitor = useMemo(inspectCapacitor, []);
+
+  // Swaps in the custom-scheme client and forces redirect mode inside the native webview.
+  const config = forEnvironment(resolveConfig(props), environment.nativeWebview);
+  const native = usingNativeClient(config, environment.nativeWebview);
+
+  const oauth = useOauth(config, environment);
   const [apiResult, setApiResult] = useState<string | null>(null);
   const [identity, setIdentity] = useState<{ comparison: IdentityComparison; probe: TokenIdentity } | null>(null);
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [popupProbe, setPopupProbe] = useState<PopupProbe | null>(null);
 
-  /** Static, so probe once. The popup probe needs a gesture and stays behind a button. */
-  const capacitor = useMemo(inspectCapacitor, []);
+  /**
+   * Base for API calls. Under `capacitor://` a relative path would be served from local
+   * assets by Capacitor's scheme handler rather than reaching the Staffbase API, so an
+   * absolute base is mandatory there.
+   */
+  const apiBase = config.apiBaseUrl || window.location.origin;
 
   /**
    * The decisive check that this is a user-context token: ask the API who the token
@@ -141,7 +153,7 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
     setIdentityError("Checking…");
 
     void Promise.all([
-      fetchTokenIdentity(config.identityPath, oauth.tokens),
+      fetchTokenIdentity(config.identityPath, oauth.tokens, apiBase),
       props.widgetApi.getUserInformation(),
     ])
       .then(([probe, profile]) => {
@@ -159,7 +171,7 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
    */
   const apiUrl = ((): string => {
     try {
-      return new URL(config.testApiPath, window.location.origin).href;
+      return new URL(config.testApiPath, apiBase).href;
     } catch {
       return config.testApiPath;
     }
@@ -186,7 +198,7 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
   const { status, tokens, error } = oauth;
   const busy = status === "authorizing" || status === "exchanging";
   const blockers = [
-    ...environmentBlockers(oauth.environment),
+    ...environmentBlockers(oauth.environment, { nativeFlowConfigured: config.nativeClientId !== "" }),
     ...configurationBlockers(config.redirectUri, oauth.environment),
   ];
   const warnings = environmentWarnings(oauth.environment, config.authorizeUri);
@@ -342,9 +354,12 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
         <summary style={{ cursor: "pointer", fontWeight: 600, margin: "12px 0 8px" }}>Diagnostics</summary>
         <pre style={styles.pre}>
           {[
+            `client:           ${native ? "NATIVE (custom scheme)" : "web"}`,
             `client_id:        ${config.clientId}`,
             `redirect_uri:     ${config.redirectUri}`,
+            `flow mode:        ${config.flowMode}${native ? "  (forced: window.open is unusable here)" : ""}`,
             `token endpoint:   ${config.tokenUri}`,
+            `API base:         ${apiBase}${config.apiBaseUrl === "" && native ? "  ← MUST be set for native" : ""}`,
             `API call target:  ${apiUrl}`,
             "",
             `scheme:           ${oauth.environment.scheme}${oauth.environment.nativeWebview ? "  ← native webview, not HTTPS" : ""}`,

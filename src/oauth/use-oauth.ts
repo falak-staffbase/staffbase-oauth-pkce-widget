@@ -11,7 +11,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   AuthorizationResponse,
@@ -23,12 +23,7 @@ import {
 import { beginAuthorization, buildLogoutUrl, exchangeCode, refreshTokens } from "./client";
 import { OauthConfig } from "./config";
 import { navigate } from "./navigate";
-import {
-  configurationBlockers,
-  EnvironmentReport,
-  environmentBlockers,
-  inspectEnvironment,
-} from "./environment";
+import { configurationBlockers, EnvironmentReport, environmentBlockers } from "./environment";
 import {
   clearPendingCode,
   clearTokens,
@@ -122,16 +117,13 @@ export interface OauthState {
  * freshly mounted instance picks it up out of `sessionStorage`. Both paths converge on
  * `completeFlow`.
  */
-export const useOauth = (config: OauthConfig): OauthState => {
+export const useOauth = (config: OauthConfig, environment: EnvironmentReport): OauthState => {
   const [status, setStatus] = useState<Status>(() => (loadTokens() ? "authenticated" : "idle"));
   const [tokens, setTokens] = useState<TokenSet | null>(() => loadTokens());
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [callback, setCallback] = useState<CallbackDebug | null>(null);
   const [returnTo, setReturnTo] = useState<string | null>(null);
-
-  /** Fixed for the lifetime of the document, so probe it once. */
-  const environment = useMemo(inspectEnvironment, []);
 
   /** Guards against the pending code being exchanged twice (codes are single-use). */
   const consumed = useRef(false);
@@ -264,7 +256,7 @@ export const useOauth = (config: OauthConfig): OauthState => {
         // come back to the app's HTTPS origin while the verifier sits under
         // `capacitor://`, so redirecting would navigate the app away for nothing.
         const blockers = [
-          ...environmentBlockers(environment),
+          ...environmentBlockers(environment, { nativeFlowConfigured: config.nativeClientId !== "" }),
           ...configurationBlockers(config.redirectUri, environment),
         ];
         if (blockers.length > 0) {

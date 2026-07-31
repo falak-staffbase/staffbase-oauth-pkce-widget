@@ -68,11 +68,17 @@ export interface TokenIdentity {
 /**
  * Ask the API who the access token belongs to.
  *
- * Same-origin by design: the token is only meaningful against the app the OAuth client is
- * registered in, which is the app serving this widget.
+ * `base` is normally the current origin, since the token is only meaningful against the
+ * app the OAuth client is registered in. It has to be passed explicitly for the native
+ * webview, where the current origin is `capacitor://…` and a relative path would be served
+ * from local assets rather than reaching the API.
  */
-export const fetchTokenIdentity = async (path: string, tokens: TokenSet): Promise<TokenIdentity> => {
-  const response = await fetch(new URL(path, window.location.origin).href, {
+export const fetchTokenIdentity = async (
+  path: string,
+  tokens: TokenSet,
+  base: string = window.location.origin,
+): Promise<TokenIdentity> => {
+  const response = await fetch(new URL(path, base).href, {
     headers: { Authorization: `${tokens.tokenType} ${tokens.accessToken}` },
   });
 

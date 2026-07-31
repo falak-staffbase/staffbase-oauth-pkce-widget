@@ -16,6 +16,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 
 import { OauthClient } from "./oauth-client";
 import { capacitorFindings, inspectCapacitor, probePopup } from "./oauth/capacitor";
+import { defaultConfig, forEnvironment, OauthConfig, usingNativeClient } from "./oauth/config";
 import {
   configurationBlockers,
   EnvironmentReport,
@@ -23,6 +24,7 @@ import {
   environmentWarnings,
   inspectEnvironment,
   isCrossSite,
+  originOf,
 } from "./oauth/environment";
 import { compareIdentity, extractUserId } from "./oauth/identity";
 import { navigate } from "./oauth/navigate";
@@ -401,21 +403,59 @@ describe("native app webview (Capacitor)", () => {
     nativeWebview: true,
   };
 
-  it("blocks the flow and points at the platform integration path", () => {
-    const blockers = environmentBlockers(native);
+  const webConfig: OauthConfig = { ...defaultConfig, clientId: "web-client", redirectUri: "https://app.example/" };
+  const bothConfig: OauthConfig = {
+    ...webConfig,
+    nativeClientId: "native-client",
+    nativeRedirectUri: "capacitor://staffbase.com/",
+  };
+
+  it("blocks when no native client is configured, and names the way to attempt it", () => {
+    const blockers = environmentBlockers(native, { nativeFlowConfigured: false });
 
     expect(blockers).toHaveLength(1);
     expect(blockers[0]).toMatch(/capacitor:/);
+    expect(blockers[0]).toMatch(/native-client-id/);
     expect(blockers[0]).toMatch(/getIntegration/);
-    expect(blockers[0]).toMatch(/web app only/);
   });
 
-  it("suppresses the origin-mismatch advice, which cannot work here", () => {
-    // Registering `capacitor://staffbase.com/` as a redirect URI is a dead end, so the
-    // generic mismatch message must not be shown alongside the real explanation.
+  it("stops blocking once a native client is configured", () => {
+    expect(environmentBlockers(native, { nativeFlowConfigured: true })).toEqual([]);
+  });
+
+  it("swaps in the native client and forces redirect mode", () => {
+    const effective = forEnvironment(bothConfig, true);
+
+    expect(effective.clientId).toBe("native-client");
+    expect(effective.redirectUri).toBe("capacitor://staffbase.com/");
+    // window.open returns null in the webview, so popup mode has nothing to poll.
+    expect(effective.flowMode).toBe("redirect");
+    expect(usingNativeClient(bothConfig, true)).toBe(true);
+  });
+
+  it("leaves the web client untouched on the web", () => {
+    expect(forEnvironment(bothConfig, false)).toEqual(bothConfig);
+    expect(usingNativeClient(bothConfig, false)).toBe(false);
+  });
+
+  it("does not swap when no native client is configured", () => {
+    expect(forEnvironment(webConfig, true)).toEqual(webConfig);
+    expect(usingNativeClient(webConfig, true)).toBe(false);
+  });
+
+  it("accepts the custom-scheme redirect URI as same-origin", () => {
+    // `new URL("capacitor://staffbase.com/").origin` is the string "null", so a naive
+    // comparison against window.location.origin would report a false mismatch here.
+    expect(originOf("capacitor://staffbase.com/")).toBe("capacitor://staffbase.com");
+    expect(configurationBlockers(forEnvironment(bothConfig, true).redirectUri, native)).toEqual([]);
+  });
+
+  it("still flags an HTTPS redirect URI while running under capacitor://", () => {
+    // Now correct advice rather than a dead end: a native client really is what's needed.
     const blockers = configurationBlockers("https://ccmuhammad.staffbase.com/", native);
 
-    expect(blockers).toEqual([]);
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toMatch(/capacitor:\/\/staffbase\.com/);
   });
 
   it("still reports a genuine origin mismatch on the web", () => {

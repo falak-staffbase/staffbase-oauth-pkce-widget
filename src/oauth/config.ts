@@ -42,6 +42,23 @@ export interface OauthConfig {
    * token is bound to the acting user rather than being app-wide.
    */
   identityPath: string;
+  /**
+   * A second OAuth client whose redirect URI is the native webview's custom scheme
+   * (e.g. `capacitor://staffbase.com/`). Empty disables the native attempt entirely.
+   *
+   * A separate client is required because a single client cannot hold both an HTTPS and a
+   * custom-scheme redirect URI for the *same* flow — the redirect URI sent must match the
+   * origin the code has to come back to, and that origin differs between web and native.
+   */
+  nativeClientId: string;
+  nativeRedirectUri: string;
+  /**
+   * Absolute base for API calls. Required in the native webview: a relative `/api/users`
+   * resolves to `capacitor://staffbase.com/api/users`, which Capacitor's internal scheme
+   * handler serves from local assets instead of reaching the Staffbase API. Empty means
+   * resolve against the current origin, which is correct on the web.
+   */
+  apiBaseUrl: string;
 }
 
 /**
@@ -72,6 +89,9 @@ export const defaultConfig: OauthConfig = {
   flowMode: "popup",
   testApiPath: "/api/users?limit=3",
   identityPath: "/auth/discover",
+  nativeClientId: "",
+  nativeRedirectUri: "capacitor://staffbase.com/",
+  apiBaseUrl: "",
 };
 
 /**
@@ -89,6 +109,9 @@ export const oauthAttributes = [
   "flow-mode",
   "test-api-path",
   "identity-path",
+  "native-client-id",
+  "native-redirect-uri",
+  "api-base-url",
 ] as const;
 
 export type OauthAttributeName = (typeof oauthAttributes)[number];
@@ -115,5 +138,33 @@ export const resolveConfig = (attrs: Record<string, unknown>): OauthConfig => {
     flowMode: flowMode === "redirect" ? "redirect" : "popup",
     testApiPath: str("test-api-path", defaultConfig.testApiPath),
     identityPath: str("identity-path", defaultConfig.identityPath),
+    nativeClientId: str("native-client-id", defaultConfig.nativeClientId),
+    nativeRedirectUri: str("native-redirect-uri", defaultConfig.nativeRedirectUri),
+    apiBaseUrl: str("api-base-url", defaultConfig.apiBaseUrl),
   };
 };
+
+/**
+ * Pick the client to use for the environment we are actually running in.
+ *
+ * On the web nothing changes. In the native webview, swap to the custom-scheme client and
+ * force `redirect` mode — `window.open` returns null there, so popup mode has nothing to
+ * poll, and the redirect keeps the callback on the `capacitor://` origin where the PKCE
+ * verifier lives.
+ */
+export const forEnvironment = (config: OauthConfig, nativeWebview: boolean): OauthConfig => {
+  if (!nativeWebview || config.nativeClientId === "") {
+    return config;
+  }
+
+  return {
+    ...config,
+    clientId: config.nativeClientId,
+    redirectUri: config.nativeRedirectUri,
+    flowMode: "redirect",
+  };
+};
+
+/** True when the native client is configured *and* we are in a position to use it. */
+export const usingNativeClient = (config: OauthConfig, nativeWebview: boolean): boolean =>
+  nativeWebview && config.nativeClientId !== "";

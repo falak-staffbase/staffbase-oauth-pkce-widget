@@ -46,6 +46,24 @@ export interface EnvironmentReport {
  * are all resolved correctly by the naive rule. It will misjudge multi-part suffixes
  * like `co.uk`, which would produce a false "same-site" reading — acceptable for a hint.
  */
+/**
+ * Origin of a URL, normalised across schemes.
+ *
+ * `URL.origin` serialises to the string `"null"` for non-special schemes — so
+ * `new URL("capacitor://staffbase.com/").origin` is `"null"`, while the webview's
+ * `window.location.origin` reports `capacitor://staffbase.com`. Comparing those directly
+ * would report a false origin mismatch for the native client, so fall back to
+ * `protocol//host`.
+ */
+export const originOf = (url: string): string | null => {
+  try {
+    const parsed = new URL(url);
+    return parsed.origin && parsed.origin !== "null" ? parsed.origin : `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return null;
+  }
+};
+
 export const registrableDomain = (origin: string): string | null => {
   try {
     const { hostname } = new URL(origin);
@@ -109,14 +127,19 @@ export const inspectEnvironment = (): EnvironmentReport => {
  * The blocking problems, in the order worth fixing them. Empty means the environment can
  * support the flow.
  */
-export const environmentBlockers = (report: EnvironmentReport): string[] => {
+export const environmentBlockers = (
+  report: EnvironmentReport,
+  options: { nativeFlowConfigured?: boolean } = {},
+): string[] => {
   const blockers: string[] = [];
 
-  if (report.nativeWebview) {
-    // Checked first: it also explains the origin mismatch that `configurationBlockers`
-    // would otherwise report with advice that cannot work here.
+  // Only a blocker when there is no native client to fall back to. With one configured,
+  // the flow becomes: navigate the webview to the IdP, let it redirect back to
+  // `capacitor://…` where Capacitor's internal handler serves the app shell — same origin,
+  // so the PKCE verifier in sessionStorage is still reachable.
+  if (report.nativeWebview && !options.nativeFlowConfigured) {
     blockers.push(
-      `Native app webview: this document is served over "${report.scheme}" (origin "${report.origin}"), not HTTPS — the Staffbase mobile app hosts widget content in a Capacitor webview under a custom scheme. A browser-based authorization-code flow cannot complete here, for reasons no OAuth configuration can fix: the IdP will not redirect to a custom scheme in a form the widget can read, a custom-scheme origin cannot reliably pass CORS on the token endpoint, and same-origin relative paths like "/api/users" do not resolve to the Staffbase API. In the native app, authentication has to be brokered by the platform — that is what widgetApi.getIntegration() is for — or handed to the system browser through native plugin APIs that widget JavaScript cannot reach. This flow is viable on the web app only.`,
+      `Native app webview: this document is served over "${report.scheme}" (origin "${report.origin}"), not HTTPS — the Staffbase mobile app hosts widget content in a Capacitor webview under a custom scheme. The popup mechanism cannot work here (window.open returns null), and the standard HTTPS redirect URI would return the code to a different origin than the one holding the PKCE verifier. To attempt the native flow, register a second OAuth client with a "capacitor://…" redirect URI and set the native-client-id / native-redirect-uri attributes. Otherwise authentication has to be brokered by the platform — widgetApi.getIntegration() — or by a custom plugin, which gets a real HTTPS origin.`,
     );
   }
 
@@ -174,17 +197,13 @@ export const environmentWarnings = (report: EnvironmentReport, authorizeUri: str
  * the popup simply appears to hang. Better to refuse up front and name the fix.
  */
 export const configurationBlockers = (redirectUri: string, report: EnvironmentReport): string[] => {
-  let redirectOrigin: string;
-  try {
-    redirectOrigin = new URL(redirectUri).origin;
-  } catch {
+  const redirectOrigin = originOf(redirectUri);
+
+  if (!redirectOrigin) {
     return [`Redirect URI "${redirectUri}" is not a valid absolute URL.`];
   }
 
-  // A native webview always "mismatches", since its origin is a custom scheme. Saying so
-  // here would advise registering `capacitor://…` as a redirect URI, which cannot work —
-  // `environmentBlockers` reports the real reason instead.
-  if (report.opaqueOrigin || report.nativeWebview || redirectOrigin === report.origin) {
+  if (report.opaqueOrigin || redirectOrigin === report.origin) {
     return [];
   }
 
