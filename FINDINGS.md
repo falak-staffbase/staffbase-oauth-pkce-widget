@@ -86,16 +86,16 @@ That single fact invalidates every mechanism above. Routes tried:
 |---|---|---|---|
 | 1 | Popup + location polling | `window.open` returns **null** — no popup, no `opener` | **Measured** |
 | 2 | Popup + `postMessage` | no popup exists to post from | **Measured** |
-| 3 | Full-page redirect, HTTPS redirect URI | redirect is handed to the **system browser**; code lands in Safari while the verifier stays in the app's webview — different origin, unreachable | **Measured** |
-| 4 | `capacitor://` redirect URI (second OAuth client) | IdP *accepts* the custom scheme, but the device cannot deliver it: *"Safari cannot open the page because the address is invalid"* — `capacitor://` is Capacitor's internal asset scheme, not a registered external URL scheme | **Measured** |
+| 3 | Full-page redirect, HTTPS redirect URI (`https://<app>/…`) | redirect is handed to the **system browser**; the code lands in Safari while the verifier stays in the app's webview under `capacitor://staffbase.com` — different origin, unreachable | **Measured** |
+| 4 | Redirect URI `capacitor://staffbase.com/`, registered on a second OAuth client | The IdP **accepts** the custom-scheme registration, but the device cannot deliver it: *"Safari cannot open the page because the address is invalid."* `capacitor://staffbase.com` is Capacitor's **internal** asset-serving origin (a `WKURLSchemeHandler`), not an external URL scheme registered in the app's `Info.plist` | **Measured** |
 | 5 | Universal Link as the `redirect_uri` | iOS fires universal links on a **user tap only**, never as the target of an HTTP redirect — so an IdP 302 always lands in Safari | **Documented + Measured** |
-| 6 | `/openlink/content/page/<id>` **tapped** by the user | Correctly opens the app ✅ — but the `?code=` query is not preserved through the deep-link handler | **Measured** |
-| 7 | Any custom scheme via `AppLauncher.canOpenUrl` | none reachable (`capacitor://`, `staffbase://`, `com.staffbase.app://`, `sb://`, …) | **Measured**¹ |
+| 6 | `https://<app>/openlink/content/page/<pageID>` **tapped** by the user | Correctly opens the app ✅ — but the `?code=` query is not preserved through the deep-link handler | **Measured** |
+| 7 | Any custom scheme, probed via `AppLauncher.canOpenUrl` | none reachable — tried `capacitor://staffbase.com/`, `staffbase://`, `com.staffbase.app://`, `ccmuhammad://`, `sb://` | **Measured**¹ |
 
-¹ A negative `canOpenUrl` is not strictly conclusive — iOS only answers for schemes in the
-calling app's `LSApplicationQueriesSchemes` allowlist. It is the ceiling of what JavaScript can
-observe. (Note also: `canOpenUrl` returns `true` for *any* `https://` URL because the browser
-claims web URLs — that is not evidence about the app.)
+¹ A negative `canOpenUrl` is not strictly conclusive — iOS only answers for schemes listed in the
+calling app's `LSApplicationQueriesSchemes`. It is the ceiling of what JavaScript can observe.
+(Note also: `canOpenUrl` returns `true` for *any* `https://` URL because the browser claims web
+URLs — that is not evidence about the app.)
 
 ### What the native environment does offer
 
@@ -111,64 +111,14 @@ Probed from widget JS via the Capacitor bridge:
 
 ### Why none of this is fixable by configuration
 
-The missing pieces live in the **iOS build** (external URL-scheme registration, deep-link
-handling) and in **iOS platform behaviour** (universal links not firing on redirects). Neither
-is reachable from OAuth client configuration or widget JavaScript.
+The missing pieces live in the **iOS build** — registering an external URL scheme, and
+deep-link handling that preserves a query string — and in **iOS platform behaviour**, where
+universal links do not fire from a redirect. Neither is reachable from OAuth client
+configuration or from widget JavaScript.
 
 ---
 
-## 3. Why a Custom Plugin is different
-
-A **widget** shares the app's document, so it inherits `capacitor://staffbase.com`.
-A **plugin** loads in its own iframe pointing at *your* HTTPS URL. That difference cascades:
-
-- real HTTPS origin → `sessionStorage` and `crypto.subtle` work
-- the redirect URI is on **your own** origin → same-origin callback, verifier reachable
-- the redirect happens **inside the iframe**, HTTPS → HTTPS → no OS handoff, so no system
-  browser, no universal links, no custom schemes. The entire problem class disappears.
-
-**One thing to verify before committing to it:** the IdP must permit being framed. If it sends
-`X-Frame-Options: DENY` or a restrictive `frame-ancestors`, its login page will not render in
-the plugin's iframe and a popup becomes necessary again. *(Inferred — not yet tested.)*
-
----
-
-## 4. Two misconceptions worth correcting
-
-**"No client secret means the IdP can't trust the request."**
-A client secret only ever authenticated the *client*, never the *user*. The IdP authenticates
-the user itself, on its own domain, with credentials the widget never sees. What replaces the
-secret is: a pre-registered, exact-matched **redirect URI** (so the code can only be delivered
-to our origin), **PKCE** (so only the party that started the flow can redeem it), **`state`**
-(CSRF), and single-use short-lived codes. A public client with no secret is the RFC-recommended
-pattern for browser apps precisely *because* a browser cannot keep a secret.
-
-**"PKCE means users hold a private key and could impersonate anyone."**
-PKCE involves no key and no signing. `code_verifier` is a random per-request string;
-`code_challenge` is its SHA-256. Knowing your own verifier lets you complete your own flow —
-that is the intent. Impersonation is not possible, because the code is bound to whoever
-authenticated at the IdP.
-
-**The real client-side risk is different and worth taking seriously:** tokens in browser storage
-are **XSS-exfiltratable**, and any script on the origin can read them. That matters more given a
-refresh token and tenant-wide `*.All` scopes. That — not PKCE — is the argument for a backend
-holding tokens.
-
----
-
-## 5. Open item
-
-**Scope enforcement is unverified.** The scopes used (`Users.Read.All`, `Groups.Read.All`) are
-tenant-wide. The account used for testing is a branch admin, so `GET /api/users` returning all
-users is consistent with *either* "the API enforces the acting user's role" *or* "the scope
-alone grants directory read".
-
-**A non-admin account running the same flow and calling `/api/users` settles it.** Until then,
-do not rely on these scopes being constrained by the user's permissions.
-
----
-
-## 6. Reference: a working web configuration
+## 3. Reference: a working web configuration
 
 ```
 Platform              SPA (public client, no secret)
