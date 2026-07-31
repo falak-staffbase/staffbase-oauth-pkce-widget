@@ -203,9 +203,12 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
   const busy = status === "authorizing" || status === "exchanging";
   const blockers = [
     ...environmentBlockers(oauth.environment, { nativeFlowConfigured: config.nativeClientId !== "" }),
-    ...configurationBlockers(config.redirectUri, oauth.environment),
+    ...configurationBlockers(config.redirectUri, oauth.environment, { experimentalNativeFlow: native }),
   ];
-  const warnings = environmentWarnings(oauth.environment, config.authorizeUri);
+  const warnings = environmentWarnings(oauth.environment, config.authorizeUri, {
+    experimentalNativeFlow: native,
+    redirectUri: config.redirectUri,
+  });
 
   return (
     <div style={styles.card}>

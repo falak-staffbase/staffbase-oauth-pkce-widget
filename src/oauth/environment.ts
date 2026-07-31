@@ -171,9 +171,24 @@ export const environmentBlockers = (
  * break anything, so gating sign-in on them would be wrong. They exist to explain a
  * failure if one happens — particularly on iOS, where the failure mode is silent.
  */
-export const environmentWarnings = (report: EnvironmentReport, authorizeUri: string): string[] => {
+export const environmentWarnings = (
+  report: EnvironmentReport,
+  authorizeUri: string,
+  options: { experimentalNativeFlow?: boolean; redirectUri?: string } = {},
+): string[] => {
   const warnings: string[] = [];
   const crossSite = isCrossSite(report.origin, authorizeUri);
+
+  if (report.nativeWebview && options.experimentalNativeFlow) {
+    const redirectOrigin = options.redirectUri ? originOf(options.redirectUri) : null;
+    const httpsCallback = redirectOrigin?.startsWith("https:") ?? false;
+
+    warnings.push(
+      httpsCallback
+        ? `Experimental native attempt with an HTTPS callback. The redirect leaves for the system browser, so success depends on iOS treating ${redirectOrigin} as a Universal Link for this app, on the app's deep-link handler preserving the "?code=" query, and on this webview surviving so the PKCE verifier stays in sessionStorage. If the redirect simply lands in Safari instead, the code is stranded there — the verifier lives in the app, not the browser.`
+        : `Experimental native attempt with a custom-scheme callback. This was tested and fails: Safari reports "the address is invalid" because the scheme is not registered as an external URL scheme for the app.`,
+    );
+  }
 
   if (crossSite && report.webkit) {
     warnings.push(
@@ -196,7 +211,11 @@ export const environmentWarnings = (report: EnvironmentReport, authorizeUri: str
  * not, three separate things break at once and none of them produce an obvious error —
  * the popup simply appears to hang. Better to refuse up front and name the fix.
  */
-export const configurationBlockers = (redirectUri: string, report: EnvironmentReport): string[] => {
+export const configurationBlockers = (
+  redirectUri: string,
+  report: EnvironmentReport,
+  options: { experimentalNativeFlow?: boolean } = {},
+): string[] => {
   const redirectOrigin = originOf(redirectUri);
 
   if (!redirectOrigin) {
@@ -204,6 +223,13 @@ export const configurationBlockers = (redirectUri: string, report: EnvironmentRe
   }
 
   if (report.opaqueOrigin || redirectOrigin === report.origin) {
+    return [];
+  }
+
+  // Explicitly opted into the native attempt. A cross-origin callback is inherent to it —
+  // the webview runs on a custom scheme while the redirect URI is HTTPS — so refusing here
+  // would make the experiment impossible to run. Reported as a warning instead.
+  if (report.nativeWebview && options.experimentalNativeFlow) {
     return [];
   }
 

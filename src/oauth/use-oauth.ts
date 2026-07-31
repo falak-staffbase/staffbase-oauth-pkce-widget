@@ -255,9 +255,10 @@ export const useOauth = (config: OauthConfig, environment: EnvironmentReport): O
         // these conditions defeat redirect mode too. In a native webview the code would
         // come back to the app's HTTPS origin while the verifier sits under
         // `capacitor://`, so redirecting would navigate the app away for nothing.
+        const nativeAttempt = environment.nativeWebview && config.nativeClientId !== "";
         const blockers = [
           ...environmentBlockers(environment, { nativeFlowConfigured: config.nativeClientId !== "" }),
-          ...configurationBlockers(config.redirectUri, environment),
+          ...configurationBlockers(config.redirectUri, environment, { experimentalNativeFlow: nativeAttempt }),
         ];
         if (blockers.length > 0) {
           fail(blockers[0]);

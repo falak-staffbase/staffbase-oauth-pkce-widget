@@ -501,6 +501,43 @@ describe("native app webview (Capacitor)", () => {
 
     expect(configurationBlockers("https://elsewhere.example/", web)).toHaveLength(1);
   });
+
+  describe("opting into an HTTPS callback from the native webview", () => {
+    const HTTPS_CALLBACK = "https://ccmuhammad.staffbase.com/content/page/abc123";
+
+    it("allows the cross-origin callback instead of blocking it", () => {
+      // Without the opt-in this is a hard blocker; with it, the experiment can run.
+      expect(configurationBlockers(HTTPS_CALLBACK, native)).toHaveLength(1);
+      expect(configurationBlockers(HTTPS_CALLBACK, native, { experimentalNativeFlow: true })).toEqual([]);
+    });
+
+    it("warns about what the attempt depends on, without blocking", () => {
+      const warnings = environmentWarnings(native, "https://id-de1.staffbase.rocks/oauth2/auth", {
+        experimentalNativeFlow: true,
+        redirectUri: HTTPS_CALLBACK,
+      });
+
+      expect(warnings.join(" ")).toMatch(/Universal Link/);
+      expect(warnings.join(" ")).toMatch(/stranded/);
+    });
+
+    it("says plainly that a custom-scheme callback was tested and fails", () => {
+      const warnings = environmentWarnings(native, "https://id-de1.staffbase.rocks/oauth2/auth", {
+        experimentalNativeFlow: true,
+        redirectUri: "capacitor://staffbase.com/",
+      });
+
+      expect(warnings.join(" ")).toMatch(/address is invalid/);
+    });
+
+    it("stays silent on the web", () => {
+      const web = { ...native, origin: "https://ccmuhammad.staffbase.com", scheme: "https:", nativeWebview: false };
+
+      expect(
+        environmentWarnings(web, "https://id-us1.staffbase.com/oauth2/auth", { experimentalNativeFlow: true }),
+      ).not.toContainEqual(expect.stringMatching(/Experimental native/));
+    });
+  });
 });
 
 describe("cross-site / WebKit warnings", () => {
