@@ -261,6 +261,29 @@ describe("environment blockers", () => {
   });
 });
 
+describe("blockers apply to redirect mode too", () => {
+  it("does not navigate when the environment cannot complete the flow", async () => {
+    // Redirect mode used to skip the blocker check, which in a native webview would
+    // navigate the app away to an IdP whose code could never be redeemed: the verifier
+    // lives under capacitor:// while the code returns to the HTTPS origin.
+    render(
+      <OauthClient
+        {...{ contentLanguage: "en_US", "flow-mode": "redirect", "redirect-uri": "https://elsewhere.example/" }}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: /Sign in with Staffbase ID/ });
+    expect(button).toBeDisabled();
+
+    fireEvent.click(button);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(navigate).not.toHaveBeenCalled();
+    // Nothing half-started that a later mount could try to finish.
+    expect(loadTransaction()).toBeNull();
+  });
+});
+
 describe("Capacitor bridge probe", () => {
   afterEach(() => {
     delete (window as unknown as { Capacitor?: unknown }).Capacitor;

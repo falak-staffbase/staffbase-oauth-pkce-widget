@@ -53,29 +53,36 @@ Popup mode collects the code three ways, in order of robustness:
 3. **`postMessage`** — if the widget is mounted on the redirect page, that instance posts
    the response to its opener (pinned to `window.location.origin`) and closes.
 
-## This does not work in the Staffbase native app
+## This does not work in the Staffbase native app — measured, not assumed
 
-Verified on iOS: the mobile app hosts widget content in a **Capacitor webview** whose
-origin is a custom scheme, not HTTPS.
+The mobile app hosts widget content in a **Capacitor webview** on a custom-scheme origin:
 
 ```
 scheme:  capacitor:
 origin:  capacitor://staffbase.com
 ```
 
-A browser-based authorization-code flow cannot complete there, and no OAuth
-configuration fixes it:
+Probed on an iOS device (see the Diagnostics panel):
 
-- the IdP will not redirect to a custom scheme in a form the widget can read;
-- a custom-scheme origin cannot reliably pass CORS on the token endpoint;
-- same-origin relative paths like `/api/users` do not resolve to the Staffbase API.
+| Observation | Consequence |
+|---|---|
+| `window.open` returns **null** | **Decisive.** No popup, no `opener`, nothing to read back. Handed to the system browser. |
+| `StaffbaseDeepLink` plugin present | Deep-link routing is owned by Staffbase's native code; a `capacitor://` callback would be consumed by their handler, not ours |
+| `Browser` plugin **absent** | No way to open the IdP in a controlled auth session from widget JS |
+| `CapacitorHttp` present | The one good news: the token exchange would bypass CORS natively |
+| `App` plugin reachable | `appUrlOpen` exists in principle, but see `StaffbaseDeepLink` |
 
-Registering `capacitor://staffbase.com/` as a redirect URI is a dead end — the widget
-detects this case explicitly and says so rather than suggesting it.
+Redirect mode does not rescue it either: the code would return to the app's **HTTPS**
+origin while the PKCE verifier sits in `sessionStorage` under **`capacitor://`** — a
+different origin, so the verifier is unreachable and the code cannot be redeemed.
+
+Registering `capacitor://staffbase.com/` as a redirect URI does not help. The missing
+piece is on the device (external URL-scheme registration) and in the app's deep-link
+handler, neither of which is reachable from OAuth configuration or widget JavaScript.
 
 In the native app, authentication has to be brokered by the platform
-(`widgetApi.getIntegration()`), or handed to the system browser via native plugin APIs
-that widget JavaScript cannot reach. **This flow is viable on the web app only.**
+(`widgetApi.getIntegration()`) or by a custom plugin, which gets a real HTTPS origin.
+**This flow is viable on the web app only.**
 
 ## The redirect URI must be on the widget's own origin
 

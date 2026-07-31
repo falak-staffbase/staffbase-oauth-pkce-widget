@@ -259,6 +259,19 @@ export const useOauth = (config: OauthConfig): OauthState => {
 
     void (async () => {
       try {
+        // Checked before anything is stored or navigated, and before the mode branch:
+        // these conditions defeat redirect mode too. In a native webview the code would
+        // come back to the app's HTTPS origin while the verifier sits under
+        // `capacitor://`, so redirecting would navigate the app away for nothing.
+        const blockers = [
+          ...environmentBlockers(environment),
+          ...configurationBlockers(config.redirectUri, environment),
+        ];
+        if (blockers.length > 0) {
+          fail(blockers[0]);
+          return;
+        }
+
         const returnUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
         const { url, transaction } = await beginAuthorization(config, config.flowMode, returnUrl);
         saveTransaction(transaction);
@@ -267,17 +280,6 @@ export const useOauth = (config: OauthConfig): OauthState => {
         if (config.flowMode === "redirect") {
           append("info", "Navigating to the IdP — this widget instance is about to be destroyed.");
           navigate(url);
-          return;
-        }
-
-        // Fail loudly and specifically rather than opening a popup we could never read.
-        const blockers = [
-          ...environmentBlockers(environment),
-          ...configurationBlockers(config.redirectUri, environment),
-        ];
-        if (blockers.length > 0) {
-          clearTransaction();
-          fail(blockers[0]);
           return;
         }
 
