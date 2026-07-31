@@ -91,6 +91,11 @@ export const configurationSchema: JSONSchema7 = {
       title: "Staffbase deep link to this widget (optional)",
       default: defaultConfig.openlinkUrl,
     },
+    "show-pkce-debug": {
+      type: "boolean",
+      title: "Show authorization code and PKCE values",
+      default: defaultConfig.showPkceDebug,
+    },
   },
 };
 
@@ -127,6 +132,10 @@ export const uiSchema: UiSchema = {
   "native-redirect-uri": {
     "ui:help":
       "Must match the native client's registered redirect URI exactly, and must be the webview's own origin — check 'origin' in Diagnostics on the device.",
+  },
+  "show-pkce-debug": {
+    "ui:help":
+      "Off by default. Reveals the authorization code and the code_verifier in full — the verifier is a live secret, so leave this off when screen-sharing or recording.",
   },
   "openlink-url": {
     "ui:help":

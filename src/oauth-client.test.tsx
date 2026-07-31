@@ -161,7 +161,9 @@ describe("OauthClient", () => {
     expect(body.get("client_secret")).toBeNull();
   });
 
-  it("surfaces the authorization code and both halves of the PKCE pair", async () => {
+  it("hides the authorization code and PKCE values by default", async () => {
+    // The verifier is a live secret, so the widget must be safe to record or screen-share
+    // without remembering to turn anything off.
     const popup = { closed: false, close: jest.fn(), opener: window, location: { search: "" }, sessionStorage };
     openMock.mockReturnValue(popup);
     Object.defineProperty(window, "fetch", {
@@ -170,6 +172,32 @@ describe("OauthClient", () => {
     });
 
     renderWidget();
+    fireEvent.click(screen.getByRole("button", { name: /Sign in with Staffbase ID/ }));
+    await waitFor(() => expect(openMock).toHaveBeenCalled());
+
+    const { state, codeVerifier } = loadTransaction()!;
+    popup.location.search = `?code=ory_ac_secret&state=${state}`;
+
+    await screen.findByText(/access_token:/);
+
+    expect(screen.queryByText(/Authorization callback/)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(codeVerifier);
+    expect(document.body.textContent).not.toContain("ory_ac_secret");
+  });
+
+  it("surfaces the authorization code and both halves of the PKCE pair when explicitly enabled", async () => {
+    const popup = { closed: false, close: jest.fn(), opener: window, location: { search: "" }, sessionStorage };
+    openMock.mockReturnValue(popup);
+    Object.defineProperty(window, "fetch", {
+      value: jest.fn().mockResolvedValue({ ok: true, json: async () => ({ access_token: "at", token_type: "bearer" }) }),
+      writable: true,
+    });
+
+    render(
+      <OauthClient
+        {...{ contentLanguage: "en_US", "redirect-uri": REDIRECT_URI, "show-pkce-debug": "true" }}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: /Sign in with Staffbase ID/ }));
     await waitFor(() => expect(openMock).toHaveBeenCalled());
 

@@ -73,6 +73,13 @@ export interface OauthConfig {
    * Empty disables the handoff.
    */
   openlinkUrl: string;
+  /**
+   * Show the authorization code and both halves of the PKCE pair.
+   *
+   * Off by default: the panel prints the `code_verifier` in full, which is a live secret, so
+   * the widget is safe to screen-share or record without remembering to hide anything.
+   */
+  showPkceDebug: boolean;
 }
 
 /**
@@ -124,6 +131,7 @@ export const defaultConfig: OauthConfig = {
    */
   apiBaseUrl: "https://ccmuhammad.staffbase.com",
   openlinkUrl: "",
+  showPkceDebug: false,
 };
 
 /**
@@ -145,6 +153,7 @@ export const oauthAttributes = [
   "native-redirect-uri",
   "api-base-url",
   "openlink-url",
+  "show-pkce-debug",
 ] as const;
 
 export type OauthAttributeName = (typeof oauthAttributes)[number];
@@ -175,6 +184,8 @@ export const resolveConfig = (attrs: Record<string, unknown>): OauthConfig => {
     nativeRedirectUri: str("native-redirect-uri", defaultConfig.nativeRedirectUri),
     apiBaseUrl: str("api-base-url", defaultConfig.apiBaseUrl),
     openlinkUrl: str("openlink-url", defaultConfig.openlinkUrl),
+    // Attributes arrive as strings; treat only an explicit affirmative as on.
+    showPkceDebug: ["true", "yes", "1"].includes(str("show-pkce-debug", "").toLowerCase()),
   };
 };
 

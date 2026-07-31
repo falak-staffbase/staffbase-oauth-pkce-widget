@@ -321,7 +321,7 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
         </p>
       )}
 
-      {oauth.callback && (
+      {oauth.callback && config.showPkceDebug && (
         <>
           <p style={styles.label}>Authorization callback</p>
           <pre style={styles.pre}>
