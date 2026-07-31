@@ -235,8 +235,16 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
       )}
 
       <div style={styles.row}>
-        <button style={styles.button} onClick={oauth.login} disabled={busy || blockers.length > 0}>
+        <button
+          style={styles.button}
+          onClick={oauth.login}
+          disabled={busy || blockers.length > 0}
+          // Surfaced on the button itself: on a phone the blocker banner may be scrolled
+          // out of view, leaving a disabled button with no visible explanation.
+          title={blockers.length > 0 ? blockers[0] : undefined}
+        >
           {tokens ? "Re-authorize" : "Sign in with Staffbase ID"}
+          {blockers.length > 0 ? " (blocked — see above)" : ""}
         </button>
         <button style={styles.button} onClick={oauth.refresh} disabled={!tokens?.refreshToken}>
           Refresh token
@@ -354,7 +362,10 @@ export const OauthClient = (props: OauthClientProps): ReactElement => {
         <summary style={{ cursor: "pointer", fontWeight: 600, margin: "12px 0 8px" }}>Diagnostics</summary>
         <pre style={styles.pre}>
           {[
+            `build:            ${typeof __BUILD_TIME__ === "string" ? __BUILD_TIME__ : "unknown"}`,
+            "",
             `client:           ${native ? "NATIVE (custom scheme)" : "web"}`,
+            `native client set: ${config.nativeClientId === "" ? "NO — native flow disabled" : "yes"}`,
             `client_id:        ${config.clientId}`,
             `redirect_uri:     ${config.redirectUri}`,
             `flow mode:        ${config.flowMode}${native ? "  (forced: window.open is unusable here)" : ""}`,

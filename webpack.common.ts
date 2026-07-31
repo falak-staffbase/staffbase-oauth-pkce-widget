@@ -41,6 +41,14 @@ const config: webpack.Configuration = {
   resolve: {
     extensions: [".tsx", ".ts", ".js"],
   },
+  plugins: [
+    // Stamped into the bundle so the Diagnostics panel can prove which build is running.
+    // Webviews — the Staffbase native app especially — cache aggressively, and a stale
+    // bundle is otherwise indistinguishable from a configuration problem.
+    new webpack.DefinePlugin({
+      __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    }),
+  ],
   output: {
     filename: "[name].js",
     path: __dirname + "/dist",

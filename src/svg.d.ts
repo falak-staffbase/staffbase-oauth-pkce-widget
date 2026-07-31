@@ -15,3 +15,9 @@ declare module "*.svg" {
     const content: string;
     export default content;
 }
+
+/**
+ * Injected by webpack's DefinePlugin at build time. Surfaced in Diagnostics so a stale
+ * cached bundle is immediately obvious rather than looking like a misconfiguration.
+ */
+declare const __BUILD_TIME__: string;
